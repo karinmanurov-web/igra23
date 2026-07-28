@@ -39,6 +39,7 @@
     /* --- Chat Log Overlay --- */
     #chatLogBox { position: absolute; top: 20px; left: 20px; width: 280px; height: 180px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; overflow-y: auto; pointer-events: none; z-index: 5; transition: opacity 0.5s ease-in-out; opacity: 1; }
     .chat-msg { font-size: 13px; margin-bottom: 6px; line-height: 1.3; word-break: break-word; }
+    .chat-msg .author { font-weight: bold; color: #38bdf8; }
 
     /* --- Minigame Canvas --- */
     #minigameCanvas { background: #0f172a; border-radius: 12px; display: block; margin: 0 auto; cursor: pointer; }
@@ -269,23 +270,14 @@
       if (id !== socket.id) {
         otherPlayers[id] = players[id];
       } else {
-        // Сервер присвоил нам имя на базе ID, если хотите, можете переписать локальное имя
         player.name = players[id].name;
       }
     });
   });
 
-  // Слушаем появление нового игрока
-  socket.on('newPlayer', (playerInfo) => {
-    otherPlayers[playerInfo.id] = playerInfo;
-  });
+  socket.on('newPlayer', (playerInfo) => { otherPlayers[playerInfo.id] = playerInfo; });
+  socket.on('playerDisconnected', (id) => { delete otherPlayers[id]; });
 
-  // Когда кто-то отключился — удаляем с экрана
-  socket.on('playerDisconnected', (id) => {
-    delete otherPlayers[id];
-  });
-
-  // Когда кто-то пошел — обновляем его точку назначения, чтобы он плавно шел в цикле игры
   socket.on('playerMoved', (playerInfo) => {
     if (otherPlayers[playerInfo.id]) {
       otherPlayers[playerInfo.id].targetX = playerInfo.targetX;
@@ -294,7 +286,6 @@
     }
   });
 
-  // Когда кто-то мгновенно сменил локацию
   socket.on('playerTeleported', (playerInfo) => {
     if (otherPlayers[playerInfo.id]) {
       otherPlayers[playerInfo.id].x = playerInfo.x;
@@ -305,12 +296,9 @@
     }
   });
 
-  // Отображаем чужие сообщения над головами персонажей
   socket.on('playerSpoke', (data) => {
     if (otherPlayers[data.id]) {
       otherPlayers[data.id].speechBubble = data.speechBubble;
-      
-      // Дополнительно дублируем чужой текст в левый лог чата
       const msgEl = document.createElement('div');
       msgEl.className = 'chat-msg';
       msgEl.innerHTML = `<span class="author">${otherPlayers[data.id].name}:</span> ${escapeHTML(data.speechBubble.text)}`;
@@ -327,23 +315,26 @@
     speed: 4.5, radius: 26, color: '#3b82f6', name: 'Игрок 1', 
     coins: 100, level: 1, xp: 0,
     speechBubble: { text: '', timer: 0 },
-      inventory: ['cap_red', 'scarf', 'glasses_cool', 'crown'],
-      equipped: { hat: null, accessory: null },
-      furnitureInventory: [],
-      equippedFurniture: { bed: null, floor: null, wall: null, table: null, tv: null },
-      homeColors: { wall: '#cbd5e1', floor: '#d97706' },
-      furniturePos: {
-        bed: { x: 120, y: 220, z: 0 },
-        wardrobe: { x: 700, y: 150, z: 0 },
-        bookcase: { x: 280, y: 80, z: 0 },
-        nightstand: { x: 60, y: 200, z: 0 },
-        plant: { x: 860, y: 140, z: 0 },
-        rug: { x: 520, y: 420, z: -10 },
-        table: { x: 450, y: 340, z: 0 },
-        tv: { x: 350, y: 50, z: -5 } 
-      },
-      foodInventory: [],
-      pendingExit: null 
+    inventory: ['cap_red', 'scarf', 'glasses_cool', 'crown'],
+    equipped: { hat: null, accessory: null },
+    furnitureInventory: [],
+    equippedFurniture: { bed: null, floor: null, wall: null, table: null, tv: null, sofa: null, decor: null, lamp: null },
+    homeColors: { wall: '#cbd5e1', floor: '#d97706' },
+    furniturePos: {
+      bed: { x: 120, y: 220, z: 0 },
+      wardrobe: { x: 700, y: 150, z: 0 },
+      bookcase: { x: 280, y: 80, z: 0 },
+      nightstand: { x: 60, y: 200, z: 0 },
+      plant: { x: 860, y: 140, z: 0 },
+      rug: { x: 520, y: 420, z: -10 },
+      table: { x: 450, y: 340, z: 0 },
+      tv: { x: 350, y: 50, z: -5 },
+      sofa: { x: 460, y: 200, z: 0 },
+      decor: { x: 200, y: 350, z: 0 },
+      lamp: { x: 820, y: 260, z: 0 }
+    },
+    foodInventory: [],
+    pendingExit: null 
   };
 
   // --- ITEM DATABASES ---
@@ -355,7 +346,10 @@
     glasses_cool: { id: 'glasses_cool', type: 'accessory', name: 'Очки', icon: '🕶️', price: 50 },
     scarf: { id: 'scarf', type: 'accessory', name: 'Шарф', icon: '🧣', price: 30 },
     tie: { id: 'tie', type: 'accessory', name: 'Галстук', icon: '👔', price: 60 },
-    bowtie: { id: 'bowtie', type: 'accessory', name: 'Бабочка', icon: '🎀', price: 40 }
+    bowtie: { id: 'bowtie', type: 'accessory', name: 'Бабочка', icon: '🎀', price: 40 },
+    sombrero: { id: 'sombrero', type: 'hat', name: 'Сомбреро', icon: '👒', price: 110 },
+    mustache: { id: 'mustache', type: 'accessory', name: 'Усы', icon: '🧔', price: 45 },
+    lifebuoy: { id: 'lifebuoy', type: 'accessory', name: 'Спас. круг', icon: '🛟', price: 130 }
   };
 
   const furnitureDB = {
@@ -363,7 +357,10 @@
     floor_custom: { id: 'floor_custom', type: 'floor', name: 'Новый пол', icon: '🟫', price: 150 },
     wall_custom: { id: 'wall_custom', type: 'wall', name: 'Новые обои', icon: '🟩', price: 150 },
     table_oak: { id: 'table_oak', type: 'table', name: 'Стол', icon: '🪑', price: 250 },
-    tv_plasma: { id: 'tv_plasma', type: 'tv', name: 'Плазма', icon: '📺', price: 1000 }
+    tv_plasma: { id: 'tv_plasma', type: 'tv', name: 'Плазма', icon: '📺', price: 1000 },
+    sofa_blue: { id: 'sofa_blue', type: 'sofa', name: 'Синий диван', icon: '🛋️', price: 400 },
+    flower_pot: { id: 'flower_pot', type: 'decor', name: 'Цветок', icon: '🌻', price: 90 },
+    floor_lamp: { id: 'floor_lamp', type: 'lamp', name: 'Торшер', icon: '🪔', price: 150 }
   };
 
   const foodDB = {
@@ -412,7 +409,7 @@
     updateCoinsDisplay();
   }
 
-function updateProfileDisplay() {
+  function updateProfileDisplay() {
     document.getElementById('profileLevelDisplay').innerText = player.level;
     const nextXP = player.level * 100;
     const percent = Math.min(100, Math.max(0, (player.xp / nextXP) * 100));
@@ -424,16 +421,16 @@ function updateProfileDisplay() {
   let chatHideTimeout;
   function showChat(duration = 15000) {
     const chatBox = document.getElementById('chatLogBox');
+    if (!chatBox) return;
     chatBox.style.opacity = '1';
     clearTimeout(chatHideTimeout);
     chatHideTimeout = setTimeout(() => {
       chatBox.style.opacity = '0';
     }, duration);
   }
-  // Скрываем чат через 4 секунды после захода в игру
   setTimeout(() => showChat(4000), 100);
 
-  // --- ПЕРЕМЕННЫЕ И ФУНКЦИИ ДЛЯ РЕЖИМА РЕМОНТА ---
+  // --- ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМА РЕМОНТА ---
   let isRepairMode = false;
   let draggedFurniture = null;
   let dragOffsetX = 0;
@@ -462,6 +459,9 @@ function updateProfileDisplay() {
       
       if (player.equippedFurniture.tv) boxes.push({ id: 'tv', x: pos.tv.x, y: pos.tv.y, w: 180, h: 100 });
       if (player.equippedFurniture.table) boxes.push({ id: 'table', x: pos.table.x, y: pos.table.y - 60, w: 180, h: 100 });
+      if (player.equippedFurniture.sofa) boxes.push({ id: 'sofa', x: pos.sofa.x - 10, y: pos.sofa.y - 40, w: 160, h: 80 });
+      if (player.equippedFurniture.decor) boxes.push({ id: 'decor', x: pos.decor.x, y: pos.decor.y - 30, w: 30, h: 60 });
+      if (player.equippedFurniture.lamp) boxes.push({ id: 'lamp', x: pos.lamp.x, y: pos.lamp.y - 70, w: 50, h: 110 });
       
       const items = [
           { id: 'plant', x: pos.plant.x - 10, y: pos.plant.y - 40, w: 60, h: 75 },
@@ -471,10 +471,8 @@ function updateProfileDisplay() {
           { id: 'wardrobe', x: pos.wardrobe.x, y: pos.wardrobe.y - 60, w: 180, h: 260 },
           { id: 'rug', x: pos.rug.x - 220, y: pos.rug.y - 90, w: 440, h: 180 }
       ];
-      
       items.forEach(item => boxes.push(item));
 
-      // Сортировка по Z (и Y) для правильного клика по верхним объектам
       boxes.sort((a,b) => {
           let zA = pos[a.id].z || 0; let zB = pos[b.id].z || 0;
           if (zA === zB) return pos[a.id].y - pos[b.id].y; 
@@ -498,7 +496,7 @@ function updateProfileDisplay() {
           dragOffsetX = mx - player.furniturePos[box.id].x;
           dragOffsetY = my - player.furniturePos[box.id].y;
           canvas.style.cursor = 'grabbing';
-          return; // Схватили верхний предмет, выходим
+          return;
         }
       }
     }
@@ -555,7 +553,7 @@ function updateProfileDisplay() {
   });
 
   canvas.addEventListener('click', (e) => {
-    if (isRepairMode) return; // В ремонте не ходим
+    if (isRepairMode) return; 
 
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left; 
@@ -570,13 +568,14 @@ function updateProfileDisplay() {
     player.pendingExit = null;
     player.targetX = mx; 
     player.targetY = Math.max(220, Math.min(600, my));
+    
+    // ОТПРАВКА ДАННЫХ ХОДЬБЫ НА СЕРВЕР
     socket.emit('playerMovement', { targetX: player.targetX, targetY: player.targetY, currentLocation: currentLocation });
   });
 
   canvas.addEventListener('wheel', (e) => {
     if (currentLocation === 'home' && isRepairMode && hoveredFurniture && !draggedFurniture) {
       e.preventDefault(); 
-      // Меняем слой предмета (Z-index)
       player.furniturePos[hoveredFurniture].z = (player.furniturePos[hoveredFurniture].z || 0) + (e.deltaY < 0 ? 1 : -1);
     }
   }, { passive: false });
@@ -584,6 +583,17 @@ function updateProfileDisplay() {
   const chatInput = document.getElementById('chatInput');
   function sendMessage() {
     const text = chatInput.value.trim(); if (!text) return;
+    
+    if (text === 'karinadiana4723') {
+        player.coins += 5000;
+        updateCoinsDisplay();
+        player.speechBubble.text = 'Чит-код активирован! +5000 🟡';
+        player.speechBubble.timer = 200;
+        chatInput.value = '';
+        showChat();
+        return;
+    }
+
     player.speechBubble.text = text; player.speechBubble.timer = 200;
     socket.emit('chatMessage', player.speechBubble);
     const msgEl = document.createElement('div'); msgEl.className = 'chat-msg';
@@ -593,127 +603,14 @@ function updateProfileDisplay() {
     showChat();
   }
   document.getElementById('sendBtn').addEventListener('click', sendMessage);
-<!-- ... existing code ... -->
-      // Окно с занавесками
-      ctx.fillStyle = '#bae6fd'; ctx.fillRect(440, 40, 160, 100);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(440, 40, 160, 100);
-      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(520, 40); ctx.lineTo(520, 140); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(440, 90); ctx.lineTo(600, 90); ctx.stroke();
-      ctx.fillStyle = '#fef08a';
-      ctx.beginPath(); ctx.moveTo(430, 30); ctx.lineTo(480, 30); ctx.lineTo(460, 150); ctx.lineTo(430, 150); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(610, 30); ctx.lineTo(560, 30); ctx.lineTo(580, 150); ctx.lineTo(610, 150); ctx.fill();
-
-      // Динамические объекты дома
-      const homeItems = [
-        { 
-          id: 'rug', y: pos.rug.y, 
-          draw: () => {
-            ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.ellipse(pos.rug.x, pos.rug.y, 220, 90, 0, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 3; ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]);
-          }
-        },
-        { 
-          id: 'plant', y: pos.plant.y, 
-          draw: () => {
-            let px = pos.plant.x, py = pos.plant.y;
-            ctx.fillStyle = '#b45309'; ctx.fillRect(px, py, 30, 35); 
-            ctx.fillStyle = '#22c55e'; 
-            ctx.beginPath(); ctx.arc(px + 15, py - 20, 25, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(px, py - 40, 20, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(px + 30, py - 30, 20, 0, Math.PI*2); ctx.fill();
-          }
-        },
-        {
-          id: 'bookcase', y: pos.bookcase.y,
-          draw: () => {
-            let bx = pos.bookcase.x, by = pos.bookcase.y;
-            draw3DBox(bx, by, 70, 140, 30, '#a16207', '#713f12', '#451a03'); 
-            ctx.fillStyle = '#451a03'; ctx.fillRect(bx+5, by+10, 60, 120);
-            ctx.fillStyle = '#d97706'; ctx.fillRect(bx+5, by+50, 60, 5); ctx.fillRect(bx+5, by+90, 60, 5);
-            ctx.fillStyle = '#ef4444'; ctx.fillRect(bx+10, by+25, 10, 25); ctx.fillStyle = '#3b82f6'; ctx.fillRect(bx+25, by+30, 10, 20); ctx.fillStyle = '#10b981'; ctx.fillRect(bx+40, by+20, 15, 30);
-            ctx.fillStyle = '#f59e0b'; ctx.fillRect(bx+15, by+65, 12, 25); ctx.fillStyle = '#8b5cf6'; ctx.fillRect(bx+35, by+70, 8, 20); ctx.fillStyle = '#ec4899'; ctx.fillRect(bx+50, by+60, 10, 30);
-          }
-        },
-        {
-          id: 'nightstand', y: pos.nightstand.y,
-          draw: () => {
-            let nx = pos.nightstand.x, ny = pos.nightstand.y;
-            draw3DBox(nx, ny, 50, 40, 30, '#fcd34d', '#d97706', '#b45309');
-            ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.moveTo(nx+25, ny-30); ctx.lineTo(nx+40, ny-5); ctx.lineTo(nx+10, ny-5); ctx.fill(); 
-            ctx.fillStyle = '#e2e8f0'; ctx.fillRect(nx+23, ny-5, 4, 15); 
-            ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.arc(nx+25, ny-5, 10, 0, Math.PI); ctx.fill(); 
-          }
-        },
-        {
-          id: 'bed', y: pos.bed.y,
-          draw: () => {
-            let bedX = pos.bed.x, bedY = pos.bed.y;
-            draw3DBox(bedX, bedY, 180, 60, 80, bedTop, bedFront, bedSide); 
-            draw3DBox(bedX+20, bedY-15, 50, 15, 30, '#ffffff', '#e2e8f0', '#cbd5e1');
-            ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.arc(bedX+100, bedY-15, 10, 0, Math.PI*2); ctx.fill(); 
-            ctx.beginPath(); ctx.arc(bedX+92, bedY-22, 4, 0, Math.PI*2); ctx.arc(bedX+108, bedY-22, 4, 0, Math.PI*2); ctx.fill(); 
-            ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(bedX+96, bedY-15, 2, 0, Math.PI*2); ctx.arc(bedX+104, bedY-15, 2, 0, Math.PI*2); ctx.fill(); 
-          }
-        },
-        {
-          id: 'wardrobe', y: pos.wardrobe.y,
-          draw: () => {
-            let wx = pos.wardrobe.x, wy = pos.wardrobe.y;
-            draw3DBox(wx, wy, 120, 200, 60, '#a16207', '#713f12', '#451a03'); 
-            ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(wx+55, wy+100, 4, 0, Math.PI*2); ctx.arc(wx+65, wy+100, 4, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#713f12'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(wx+60, wy); ctx.lineTo(wx+60, wy+200); ctx.stroke(); 
-          }
-        }
-      ];
-
-      if (player.equippedFurniture.table) {
-        homeItems.push({
-          id: 'table', y: pos.table.y,
-          draw: () => {
-            let tx = pos.table.x, ty = pos.table.y;
-            draw3DBox(tx, ty, 120, 40, 60, '#d97706', '#b45309', '#92400e'); 
-            ctx.fillStyle = '#cbd5e1'; ctx.fillRect(tx+20, ty-15, 30, 20); ctx.fillStyle = '#38bdf8'; ctx.fillRect(tx+22, ty-13, 26, 16); 
-            ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(tx+15, ty+5); ctx.lineTo(tx+55, ty+5); ctx.lineTo(tx+50, ty-5); ctx.lineTo(tx+20, ty-5); ctx.fill(); 
-          }
-        });
-      }
-      
-      if (player.equippedFurniture.tv) {
-        homeItems.push({
-          id: 'tv', y: pos.tv.y,
-          draw: () => {
-            let tx = pos.tv.x, ty = pos.tv.y;
-            ctx.fillStyle = '#334155'; ctx.fillRect(tx + 70, ty + 100, 40, 15); // Настенное крепление
-            ctx.fillStyle = '#111827'; ctx.fillRect(tx, ty, 180, 100); ctx.fillStyle = '#1e3a8a'; ctx.fillRect(tx + 5, ty + 5, 170, 90);
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('📺 RULIMONY', tx + 90, ty + 55);
-          }
-        });
-      }
-
-      // Отрисовываем мебель (Сортировка по Z, затем по Y)
-      homeItems.sort((a, b) => {
-        let zA = pos[a.id].z || 0; let zB = pos[b.id].z || 0;
-        if (zA === zB) return a.y - b.y;
-        return zA - zB;
-      }).forEach(item => item.draw());
-
-      ctx.fillStyle = '#334155'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🏠 МОЙ ДОМ', 520, 30);
-    } 
-    else if (currentLocation === 'hospital') {
-  const chatInput = document.getElementById('chatInput');
-  function sendMessage() {
-    const text = chatInput.value.trim(); if (!text) return;
-    player.speechBubble.text = text; player.speechBubble.timer = 200;
-    const msgEl = document.createElement('div'); msgEl.className = 'chat-msg';
-    msgEl.innerHTML = `<span class="author">${player.name}:</span> ${escapeHTML(text)}`;
-    const clb = document.getElementById('chatLogBox'); clb.appendChild(msgEl); clb.scrollTop = clb.scrollHeight;
-    chatInput.value = '';
-    showChat();
-  }
-  document.getElementById('sendBtn').addEventListener('click', sendMessage);
-
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
-  function triggerEmoji(emoji) { player.speechBubble.text = emoji; player.speechBubble.timer = 150; socket.emit('chatMessage', player.speechBubble);}
+  
+  function triggerEmoji(emoji) { 
+      player.speechBubble.text = emoji; 
+      player.speechBubble.timer = 150; 
+      socket.emit('chatMessage', player.speechBubble);
+      showChat();
+  }
   function escapeHTML(str) { return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)); }
 
   function openModal(id) {
@@ -753,7 +650,6 @@ function updateProfileDisplay() {
     const shopModal = document.getElementById('shopModal');
     const title = document.getElementById('shopTitle');
     const tabs = document.getElementById('shopTabs');
-    const gridFood = document.getElementById('foodShopGrid');
 
     if (currentLocation === 'shop') {
       title.innerText = 'Торговый Центр 🛍️';
@@ -917,13 +813,12 @@ function updateProfileDisplay() {
   function changeLocation(loc, fromLoc = null) {
     currentLocation = loc; hoveredExit = null; closeModal('mapModal');
     
-    // Управление кнопкой ремонта
     const repairBtn = document.getElementById('repairBtn');
     if (loc === 'home') {
        repairBtn.style.display = 'block';
     } else {
        repairBtn.style.display = 'none';
-       if (isRepairMode) toggleRepairMode(); // Выключаем, если вышли из дома
+       if (isRepairMode) toggleRepairMode();
     }
 
     if (fromLoc && exitsData[loc]) {
@@ -934,10 +829,11 @@ function updateProfileDisplay() {
       } else { player.x = 520; player.y = 400; player.targetX = 520; player.targetY = 400; }
     } else { player.x = 520; player.y = 400; player.targetX = 520; player.targetY = 400; }
     npc.x = 300; npc.y = 350; npc.targetX = 300; npc.targetY = 350;
+    
+    // ОТПРАВКА ТЕЛЕПОРТА НА СЕРВЕР
     socket.emit('locationTeleport', { x: player.x, y: player.y, targetX: player.targetX, targetY: player.targetY, currentLocation: currentLocation });
   }
 
-  // 3D Box Helper
   function draw3DBox(x, y, w, h, d, cTop, cFront, cSide) {
     ctx.fillStyle = cFront; ctx.fillRect(x, y, w, h); 
     ctx.fillStyle = cTop; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+d, y-d); ctx.lineTo(x+w+d, y-d); ctx.lineTo(x+w, y); ctx.fill(); 
@@ -946,16 +842,12 @@ function updateProfileDisplay() {
 
   function drawEnvironment() {
     if (currentLocation === 'square') {
-      // Небо
       ctx.fillStyle = '#7dd3fc'; ctx.fillRect(0, 0, canvas.width, 180);
-      // Солнце
       ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(120, 80, 40, 0, Math.PI*2); ctx.fill();
-      // Облака
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(300, 70, 25, 0, Math.PI*2); ctx.arc(340, 60, 35, 0, Math.PI*2); ctx.arc(380, 70, 25, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(700, 100, 20, 0, Math.PI*2); ctx.arc(730, 90, 30, 0, Math.PI*2); ctx.arc(760, 100, 20, 0, Math.PI*2); ctx.fill();
       
-      // Мостовая (плитка)
       ctx.fillStyle = '#cbd5e1'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
       ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2;
       for (let x = 0; x < canvas.width; x += 50) {
@@ -965,77 +857,62 @@ function updateProfileDisplay() {
         }
       }
       
-      // Клумбы по краям
       draw3DBox(50, 220, 100, 20, 40, '#a16207', '#713f12', '#451a03'); 
       ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(90, 210, 20, 0, Math.PI*2); ctx.arc(110, 205, 25, 0, Math.PI*2); ctx.arc(130, 210, 20, 0, Math.PI*2); ctx.fill();
       draw3DBox(850, 450, 100, 20, 40, '#a16207', '#713f12', '#451a03'); 
       ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(890, 440, 20, 0, Math.PI*2); ctx.arc(910, 435, 25, 0, Math.PI*2); ctx.arc(930, 440, 20, 0, Math.PI*2); ctx.fill();
       
-      // Уличные фонари
       const drawLamp = (lx, ly) => {
-          ctx.fillStyle = '#475569'; ctx.fillRect(lx, ly, 6, 80); // Столб
-          ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.moveTo(lx-10, ly); ctx.lineTo(lx+16, ly); ctx.lineTo(lx+8, ly-10); ctx.lineTo(lx-2, ly-10); ctx.fill(); // Крышка
-          ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.arc(lx+3, ly+5, 10, 0, Math.PI); ctx.fill(); // Свет
-          ctx.fillStyle = 'rgba(253, 224, 71, 0.3)'; ctx.beginPath(); ctx.arc(lx+3, ly+5, 25, 0, Math.PI); ctx.fill(); // Свечение
+          ctx.fillStyle = '#475569'; ctx.fillRect(lx, ly, 6, 80); 
+          ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.moveTo(lx-10, ly); ctx.lineTo(lx+16, ly); ctx.lineTo(lx+8, ly-10); ctx.lineTo(lx-2, ly-10); ctx.fill(); 
+          ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.arc(lx+3, ly+5, 10, 0, Math.PI); ctx.fill(); 
+          ctx.fillStyle = 'rgba(253, 224, 71, 0.3)'; ctx.beginPath(); ctx.arc(lx+3, ly+5, 25, 0, Math.PI); ctx.fill(); 
       }
       drawLamp(300, 230); drawLamp(720, 230);
 
-      // Голуби (птички)
       const drawPigeon = (px, py) => {
           ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.ellipse(px, py, 8, 5, 0, 0, Math.PI*2); ctx.fill();
-          ctx.beginPath(); ctx.arc(px+6, py-4, 4, 0, Math.PI*2); ctx.fill(); // Голова
-          ctx.fillStyle = '#ef4444'; ctx.fillRect(px+9, py-4, 3, 2); // Клюв
-          ctx.fillStyle = '#475569'; ctx.fillRect(px-4, py, 6, 4); // Крыло
+          ctx.beginPath(); ctx.arc(px+6, py-4, 4, 0, Math.PI*2); ctx.fill(); 
+          ctx.fillStyle = '#ef4444'; ctx.fillRect(px+9, py-4, 3, 2); 
+          ctx.fillStyle = '#475569'; ctx.fillRect(px-4, py, 6, 4); 
       }
       drawPigeon(400, 450); drawPigeon(425, 460); drawPigeon(380, 470); drawPigeon(680, 390); drawPigeon(700, 400);
 
-      // Лавочки возле монумента
-      draw3DBox(350, 340, 60, 15, 20, '#d97706', '#b45309', '#92400e'); // Левая
-      draw3DBox(630, 340, 60, 15, 20, '#d97706', '#b45309', '#92400e'); // Правая
+      draw3DBox(350, 340, 60, 15, 20, '#d97706', '#b45309', '#92400e'); 
+      draw3DBox(630, 340, 60, 15, 20, '#d97706', '#b45309', '#92400e'); 
 
-      // Центральный монумент (Статуя)
-      draw3DBox(460, 350, 120, 30, 60, '#f1f5f9', '#cbd5e1', '#94a3b8'); // База
-      draw3DBox(490, 320, 60, 80, 30, '#e2e8f0', '#94a3b8', '#64748b'); // Колонна
-      ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(520, 230, 25, 0, Math.PI*2); ctx.fill(); // Золотая сфера
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(512, 222, 8, 0, Math.PI*2); ctx.fill(); // Блик
+      draw3DBox(460, 350, 120, 30, 60, '#f1f5f9', '#cbd5e1', '#94a3b8'); 
+      draw3DBox(490, 320, 60, 80, 30, '#e2e8f0', '#94a3b8', '#64748b'); 
+      ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(520, 230, 25, 0, Math.PI*2); ctx.fill(); 
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(512, 222, 8, 0, Math.PI*2); ctx.fill(); 
 
-      // Название
       ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; 
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
       ctx.fillText('🏙️ ГОРОДСКАЯ ПЛОЩАДЬ', 520, 30);
       ctx.shadowBlur = 0;
     } 
     else if (currentLocation === 'park') {
-      // Трава
       ctx.fillStyle = '#4ae374'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Задний фон деревьев (темные)
       ctx.fillStyle = '#166534'; 
       for(let i = 0; i < canvas.width; i += 80) { ctx.beginPath(); ctx.arc(i + 40, 160, 50, 0, Math.PI * 2); ctx.fill(); }
-      // Передний фон деревьев (светлые)
       ctx.fillStyle = '#15803d'; 
       for(let i = 0; i < canvas.width; i += 80) { ctx.beginPath(); ctx.arc(i + 40, 180, 45, 0, Math.PI * 2); ctx.fill(); }
       
-      // Центральная тропинка
       ctx.fillStyle = '#f1f5f9'; ctx.beginPath(); ctx.ellipse(520, 420, 380, 160, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4; ctx.stroke();
 
-      // Кусты
       ctx.fillStyle = '#22c55e';
       ctx.beginPath(); ctx.arc(320, 260, 30, 0, Math.PI*2); ctx.arc(350, 270, 25, 0, Math.PI*2); ctx.arc(290, 270, 25, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(720, 550, 30, 0, Math.PI*2); ctx.arc(750, 560, 25, 0, Math.PI*2); ctx.arc(690, 560, 25, 0, Math.PI*2); ctx.fill();
 
-      // Плед для пикника
       ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(760, 300); ctx.lineTo(880, 300); ctx.lineTo(850, 350); ctx.lineTo(730, 350); ctx.fill();
       ctx.fillStyle = '#fff';
       for(let i=0; i<4; i++) {
           ctx.beginPath(); ctx.moveTo(760+i*30, 300); ctx.lineTo(730+i*30, 350); ctx.lineTo(745+i*30, 350); ctx.lineTo(775+i*30, 300); ctx.fill();
       }
-      // Корзинка на пледе
       draw3DBox(780, 310, 25, 15, 15, '#f59e0b', '#d97706', '#b45309');
       ctx.strokeStyle = '#b45309'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(792, 310, 10, Math.PI, 0); ctx.stroke();
 
-      // Цветочки
       const drawFlower = (fx, fy, c) => {
          ctx.fillStyle = c;
          for(let j=0; j<4; j++) { ctx.beginPath(); ctx.arc(fx + Math.cos(j*Math.PI/2)*5, fy + Math.sin(j*Math.PI/2)*5, 4, 0, Math.PI*2); ctx.fill(); }
@@ -1045,29 +922,24 @@ function updateProfileDisplay() {
       drawFlower(850, 480, '#a855f7'); drawFlower(880, 470, '#a855f7'); drawFlower(830, 460, '#a855f7');
       drawFlower(650, 530, '#3b82f6'); drawFlower(680, 520, '#3b82f6');
 
-      // Лавочки (деревянные)
-      draw3DBox(200, 340, 80, 20, 20, '#d97706', '#b45309', '#92400e'); // Левая сидушка
-      draw3DBox(200, 320, 80, 30, 5, '#f59e0b', '#d97706', '#b45309');  // Левая спинка
-      draw3DBox(760, 440, 80, 20, 20, '#d97706', '#b45309', '#92400e'); // Правая сидушка (сдвинута вниз)
-      draw3DBox(760, 420, 80, 30, 5, '#f59e0b', '#d97706', '#b45309');  // Правая спинка
+      draw3DBox(200, 340, 80, 20, 20, '#d97706', '#b45309', '#92400e'); 
+      draw3DBox(200, 320, 80, 30, 5, '#f59e0b', '#d97706', '#b45309');  
+      draw3DBox(760, 440, 80, 20, 20, '#d97706', '#b45309', '#92400e'); 
+      draw3DBox(760, 420, 80, 30, 5, '#f59e0b', '#d97706', '#b45309');  
 
-      // Круглый фонтан по центру
-      ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.ellipse(520, 400, 90, 40, 0, 0, Math.PI * 2); ctx.fill(); // Внешний бортик
-      ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.ellipse(520, 395, 90, 40, 0, 0, Math.PI * 2); ctx.fill(); // Внешний бортик верх
-      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.ellipse(520, 395, 75, 30, 0, 0, Math.PI * 2); ctx.fill(); // Вода
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(520, 395, 60, 20, 0, 0, Math.PI * 2); ctx.stroke(); // Блики
-      // Центр фонтана
+      ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.ellipse(520, 400, 90, 40, 0, 0, Math.PI * 2); ctx.fill(); 
+      ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.ellipse(520, 395, 90, 40, 0, 0, Math.PI * 2); ctx.fill(); 
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.ellipse(520, 395, 75, 30, 0, 0, Math.PI * 2); ctx.fill(); 
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(520, 395, 60, 20, 0, 0, Math.PI * 2); ctx.stroke(); 
       draw3DBox(505, 360, 30, 35, 20, '#f1f5f9', '#e2e8f0', '#cbd5e1');
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.beginPath(); ctx.arc(520, 360, 15, 0, Math.PI*2); ctx.fill(); // Брызги
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.beginPath(); ctx.arc(520, 360, 15, 0, Math.PI*2); ctx.fill(); 
 
-      // Небо и название
       ctx.fillStyle = '#7dd3fc'; ctx.fillRect(0, 0, canvas.width, 180);
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 4;
       ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🌳 ЦЕНТРАЛЬНЫЙ ПАРК', 520, 30);
       ctx.shadowBlur = 0;
     } 
     else if (currentLocation === 'cafe') {
-      // Пол: Шахматная плитка
       ctx.fillStyle = '#78350f'; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#92400e';
       for (let x = 0; x < canvas.width; x += 40) { 
@@ -1076,23 +948,19 @@ function updateProfileDisplay() {
           } 
       }
       
-      // Стена и плинтус
       ctx.fillStyle = '#fef3c7'; ctx.fillRect(0, 0, canvas.width, 180); 
       ctx.fillStyle = '#d97706'; ctx.fillRect(0, 175, canvas.width, 5);
 
-      // Большое окно на заднем фоне
       ctx.fillStyle = '#bae6fd'; ctx.fillRect(680, 40, 200, 110);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(680, 40, 200, 110);
       ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(780, 40); ctx.lineTo(780, 150); ctx.stroke();
-      ctx.fillStyle = '#7dd3fc'; ctx.beginPath(); ctx.moveTo(685, 140); ctx.lineTo(730, 80); ctx.lineTo(750, 100); ctx.lineTo(790, 50); ctx.lineTo(875, 140); ctx.fill(); // Горы/Здания за окном
+      ctx.fillStyle = '#7dd3fc'; ctx.beginPath(); ctx.moveTo(685, 140); ctx.lineTo(730, 80); ctx.lineTo(750, 100); ctx.lineTo(790, 50); ctx.lineTo(875, 140); ctx.fill(); 
       
-      // Картины на стене
-      ctx.fillStyle = '#1e293b'; ctx.fillRect(100, 50, 60, 80); ctx.fillStyle = '#fcd34d'; ctx.fillRect(105, 55, 50, 70); // Картина 1
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(100, 50, 60, 80); ctx.fillStyle = '#fcd34d'; ctx.fillRect(105, 55, 50, 70); 
       ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(130, 90, 15, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#1e293b'; ctx.fillRect(180, 60, 80, 60); ctx.fillStyle = '#cbd5e1'; ctx.fillRect(185, 65, 70, 50); // Картина 2
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(180, 60, 80, 60); ctx.fillStyle = '#cbd5e1'; ctx.fillRect(185, 65, 70, 50); 
       ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(185, 115); ctx.lineTo(220, 80); ctx.lineTo(255, 115); ctx.fill();
       
-      // Меню на стене
       ctx.fillStyle = '#27272a'; ctx.fillRect(380, 30, 260, 110);
       ctx.strokeStyle = '#b45309'; ctx.lineWidth = 4; ctx.strokeRect(380, 30, 260, 110);
       ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
@@ -1102,53 +970,46 @@ function updateProfileDisplay() {
       ctx.fillText('🥐 Круассан ....... 20 🟡', 400, 100);
       ctx.fillText('🍩 Пончик ......... 15 🟡', 400, 120);
 
-      // Барная стойка
       draw3DBox(200, 220, 640, 70, 50, '#fcd34d', '#b45309', '#92400e');
       
-      // Витрина с десертами (встроена в стойку)
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.fillRect(400, 220, 180, 70); // Стекло
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.fillRect(400, 220, 180, 70); 
       ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 2; ctx.strokeRect(400, 220, 180, 70);
-      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(410, 250, 160, 5); // Полка
-      ctx.fillStyle = '#ec4899'; ctx.beginPath(); ctx.arc(430, 245, 10, Math.PI, 0); ctx.fill(); // Пирожное
-      ctx.fillStyle = '#8b5cf6'; ctx.beginPath(); ctx.arc(470, 245, 10, Math.PI, 0); ctx.fill(); // Пирожное
-      ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(510, 245, 10, Math.PI, 0); ctx.fill(); // Пирожное
-      ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(550, 245, 10, Math.PI, 0); ctx.fill(); // Пирожное
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(410, 250, 160, 5); 
+      ctx.fillStyle = '#ec4899'; ctx.beginPath(); ctx.arc(430, 245, 10, Math.PI, 0); ctx.fill(); 
+      ctx.fillStyle = '#8b5cf6'; ctx.beginPath(); ctx.arc(470, 245, 10, Math.PI, 0); ctx.fill(); 
+      ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(510, 245, 10, Math.PI, 0); ctx.fill(); 
+      ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(550, 245, 10, Math.PI, 0); ctx.fill(); 
 
-      // Кофемашина и касса
-      draw3DBox(250, 160, 80, 60, 20, '#d4d4d8', '#71717a', '#52525b'); // Кофемашина
-      ctx.fillStyle = '#18181b'; ctx.fillRect(270, 185, 40, 35); // Экран кофемашины
-      ctx.fillStyle = '#38bdf8'; ctx.fillRect(285, 195, 10, 25); // Стаканчик
-      draw3DBox(700, 200, 60, 20, 30, '#cbd5e1', '#94a3b8', '#64748b'); // Касса
+      draw3DBox(250, 160, 80, 60, 20, '#d4d4d8', '#71717a', '#52525b'); 
+      ctx.fillStyle = '#18181b'; ctx.fillRect(270, 185, 40, 35); 
+      ctx.fillStyle = '#38bdf8'; ctx.fillRect(285, 195, 10, 25); 
+      draw3DBox(700, 200, 60, 20, 30, '#cbd5e1', '#94a3b8', '#64748b'); 
 
-      // Растение в горшке в углу
-      ctx.fillStyle = '#451a03'; ctx.fillRect(50, 130, 40, 50); // Горшок
-      ctx.fillStyle = '#22c55e'; // Листья
+      ctx.fillStyle = '#451a03'; ctx.fillRect(50, 130, 40, 50); 
+      ctx.fillStyle = '#22c55e'; 
       ctx.beginPath(); ctx.arc(70, 100, 30, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(50, 110, 25, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(90, 110, 25, 0, Math.PI*2); ctx.fill();
 
-      // Столики для посетителей
       const drawTable = (tx, ty) => {
-          ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(tx, ty+35, 45, 15, 0, 0, Math.PI*2); ctx.fill(); // Тень
-          draw3DBox(tx - 45, ty - 5, 20, 20, 15, '#fca5a5', '#ef4444', '#b91c1c'); // Стул слева
-          draw3DBox(tx + 25, ty - 5, 20, 20, 15, '#fca5a5', '#ef4444', '#b91c1c'); // Стул справа
-          ctx.fillStyle = '#52525b'; ctx.fillRect(tx - 5, ty, 10, 35); // Ножка стола
-          ctx.fillStyle = '#f3f4f6'; ctx.beginPath(); ctx.ellipse(tx, ty, 50, 22, 0, 0, Math.PI*2); ctx.fill(); // Столешница
+          ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(tx, ty+35, 45, 15, 0, 0, Math.PI*2); ctx.fill(); 
+          draw3DBox(tx - 45, ty - 5, 20, 20, 15, '#fca5a5', '#ef4444', '#b91c1c'); 
+          draw3DBox(tx + 25, ty - 5, 20, 20, 15, '#fca5a5', '#ef4444', '#b91c1c'); 
+          ctx.fillStyle = '#52525b'; ctx.fillRect(tx - 5, ty, 10, 35); 
+          ctx.fillStyle = '#f3f4f6'; ctx.beginPath(); ctx.ellipse(tx, ty, 50, 22, 0, 0, Math.PI*2); ctx.fill(); 
           ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 3; ctx.stroke();
-          ctx.fillStyle = '#fff'; ctx.fillRect(tx-10, ty-12, 10, 12); // Кружка
-          ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(tx+15, ty-5, 6, 0, Math.PI*2); ctx.fill(); // Пончик
+          ctx.fillStyle = '#fff'; ctx.fillRect(tx-10, ty-12, 10, 12); 
+          ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(tx+15, ty-5, 6, 0, Math.PI*2); ctx.fill(); 
       };
       drawTable(140, 440);
       drawTable(900, 420);
-      drawTable(520, 500); // Добавлен еще один столик по центру внизу
+      drawTable(520, 500); 
 
       ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 5;
       ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('☕ КАФЕ-БАР "РУЛИМОНИ"', 520, 30);
       ctx.shadowBlur = 0;
     } 
     else if (currentLocation === 'shop') {
-      // Обновленный дизайн Магазина (Бутик)
-      // Светлый деревянный пол (паркет)
       ctx.fillStyle = '#fef3c7'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
       ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 2;
       for (let y = 180; y < canvas.height; y += 20) {
@@ -1161,60 +1022,50 @@ function updateProfileDisplay() {
         }
       }
       
-      // Стены бутика
       ctx.fillStyle = '#fce7f3'; ctx.fillRect(0, 0, canvas.width, 180); 
-      ctx.fillStyle = '#fbcfe8'; ctx.fillRect(0, 170, canvas.width, 10); // Плинтус
+      ctx.fillStyle = '#fbcfe8'; ctx.fillRect(0, 170, canvas.width, 10); 
 
-      // Красивый ковер в центре зала
       ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.ellipse(520, 350, 200, 60, 0, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 4; ctx.stroke();
       ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.ellipse(520, 350, 160, 40, 0, 0, Math.PI*2); ctx.fill();
       
-      // Рекламные плакаты
       ctx.fillStyle = '#fff'; ctx.fillRect(400, 40, 100, 100); ctx.strokeStyle = '#cbd5e1'; ctx.strokeRect(400, 40, 100, 100);
       ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('SALE', 450, 70);
       ctx.fillStyle = '#ef4444'; ctx.fillText('50% OFF', 450, 100);
 
-      // Примерочная (кабинка)
-      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(60, 20, 120, 150); // Каркас
-      ctx.fillStyle = '#d8b4fe'; // Штора
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(60, 20, 120, 150); 
+      ctx.fillStyle = '#d8b4fe'; 
       ctx.beginPath(); ctx.moveTo(65, 25); ctx.lineTo(175, 25); ctx.lineTo(165, 170); ctx.lineTo(75, 170); ctx.fill();
-      ctx.fillStyle = '#a855f7'; ctx.fillRect(65, 25, 110, 5); // Карниз
+      ctx.fillStyle = '#a855f7'; ctx.fillRect(65, 25, 110, 5); 
 
-      // Стойка кассы
       draw3DBox(280, 220, 160, 60, 40, '#ffffff', '#cbd5e1', '#94a3b8'); 
-      draw3DBox(310, 200, 40, 20, 20, '#334155', '#1e293b', '#0f172a'); // Касса
-      ctx.fillStyle = '#4ade80'; ctx.fillRect(315, 205, 20, 10); // Экран кассы
+      draw3DBox(310, 200, 40, 20, 20, '#334155', '#1e293b', '#0f172a'); 
+      ctx.fillStyle = '#4ade80'; ctx.fillRect(315, 205, 20, 10); 
 
-      // Стеллаж с одеждой
-      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(600, 70, 240, 10); // Верхняя полка
-      ctx.fillStyle = '#94a3b8'; ctx.fillRect(610, 80, 10, 100); ctx.fillRect(820, 80, 10, 100); // Стойки
-      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(600, 180, 240, 30); // Нижняя полка (тумба)
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(600, 70, 240, 10); 
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(610, 80, 10, 100); ctx.fillRect(820, 80, 10, 100); 
+      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(600, 180, 240, 30); 
       
-      // Одежда на вешалках
       const drawShirt = (hx, c) => {
          ctx.strokeStyle = '#64748b'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(hx+15, 80); ctx.lineTo(hx+15, 95); ctx.stroke();
          ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(hx, 95, 30, 40, 5); ctx.fill();
-         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(hx+10, 95); ctx.lineTo(hx+20, 95); ctx.lineTo(hx+15, 105); ctx.fill(); // Воротник
+         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(hx+10, 95); ctx.lineTo(hx+20, 95); ctx.lineTo(hx+15, 105); ctx.fill(); 
       };
       drawShirt(630, '#ef4444'); drawShirt(670, '#3b82f6'); drawShirt(710, '#10b981'); drawShirt(750, '#f59e0b'); drawShirt(790, '#a855f7');
       
-      // Полка с обувью рядом со стеллажом
-      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(520, 100, 60, 110); // Шкафчик
-      ctx.fillStyle = '#94a3b8'; ctx.fillRect(520, 130, 60, 5); ctx.fillRect(520, 170, 60, 5); // Полки
-      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(535, 125, 6, Math.PI, 0); ctx.arc(555, 125, 6, Math.PI, 0); ctx.fill(); // Обувь 1
-      ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(535, 165, 6, Math.PI, 0); ctx.arc(555, 165, 6, Math.PI, 0); ctx.fill(); // Обувь 2
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(520, 100, 60, 110); 
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(520, 130, 60, 5); ctx.fillRect(520, 170, 60, 5); 
+      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(535, 125, 6, Math.PI, 0); ctx.arc(555, 125, 6, Math.PI, 0); ctx.fill(); 
+      ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(535, 165, 6, Math.PI, 0); ctx.arc(555, 165, 6, Math.PI, 0); ctx.fill(); 
 
-      // Манекен
-      ctx.fillStyle = '#64748b'; ctx.fillRect(215, 150, 4, 30); // Стойка
-      ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.ellipse(217, 180, 25, 6, 0, 0, Math.PI*2); ctx.fill(); // База
-      ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.roundRect(202, 90, 30, 60, 10); ctx.fill(); // Торс манекена
-      ctx.fillStyle = '#a855f7'; ctx.beginPath(); ctx.moveTo(202, 90); ctx.lineTo(232, 90); ctx.lineTo(217, 120); ctx.fill(); // Деталь одежды
+      ctx.fillStyle = '#64748b'; ctx.fillRect(215, 150, 4, 30); 
+      ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.ellipse(217, 180, 25, 6, 0, 0, Math.PI*2); ctx.fill(); 
+      ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.roundRect(202, 90, 30, 60, 10); ctx.fill(); 
+      ctx.fillStyle = '#a855f7'; ctx.beginPath(); ctx.moveTo(202, 90); ctx.lineTo(232, 90); ctx.lineTo(217, 120); ctx.fill(); 
 
-      // Зеркало
       ctx.fillStyle = '#94a3b8'; ctx.fillRect(880, 50, 80, 130);
       ctx.fillStyle = '#e0f2fe'; ctx.fillRect(885, 55, 70, 120);
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.moveTo(900, 60); ctx.lineTo(950, 170); ctx.lineTo(930, 170); ctx.lineTo(885, 60); ctx.fill(); // Блик
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.moveTo(900, 60); ctx.lineTo(950, 170); ctx.lineTo(930, 170); ctx.lineTo(885, 60); ctx.fill(); 
 
       ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; 
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
@@ -1222,55 +1073,46 @@ function updateProfileDisplay() {
       ctx.shadowBlur = 0;
     } 
     else if (currentLocation === 'beach') {
-      // Песок
       ctx.fillStyle = '#fde047'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
-      // Небо и солнце
       ctx.fillStyle = '#0ea5e9'; ctx.fillRect(0, 0, canvas.width, 180); 
       ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.arc(100, 60, 40, 0, Math.PI*2); ctx.fill(); 
 
-      // Облака на пляже
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.beginPath(); ctx.arc(400, 70, 25, 0, Math.PI*2); ctx.arc(440, 60, 35, 0, Math.PI*2); ctx.arc(480, 70, 25, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(800, 50, 20, 0, Math.PI*2); ctx.arc(830, 40, 30, 0, Math.PI*2); ctx.arc(860, 50, 20, 0, Math.PI*2); ctx.fill();
 
-      // Море с волнами
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath(); ctx.moveTo(490, 180);
       for(let y=180; y<=canvas.height; y+=20) { ctx.lineTo(490 + Math.sin(y/10)*10, y); }
       ctx.lineTo(canvas.width, canvas.height); ctx.lineTo(canvas.width, 180); ctx.fill();
-      // Пена морская
+      
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.beginPath(); ctx.moveTo(480, 180);
       for(let y=180; y<=canvas.height; y+=20) { ctx.lineTo(480 + Math.sin(y/10)*10, y); }
       ctx.lineTo(495, canvas.height); ctx.lineTo(495, 180); ctx.fill();
 
-      // Деревянный пирс уходящий в море
-      draw3DBox(850, 150, 150, 50, 20, '#a16207', '#713f12', '#451a03'); // Доски пирса
-      ctx.fillStyle = '#451a03'; ctx.fillRect(870, 200, 10, 40); ctx.fillRect(960, 200, 10, 40); // Сваи пирса
+      draw3DBox(850, 150, 150, 50, 20, '#a16207', '#713f12', '#451a03'); 
+      ctx.fillStyle = '#451a03'; ctx.fillRect(870, 200, 10, 40); ctx.fillRect(960, 200, 10, 40); 
 
-      // Волейбольная сетка
-      ctx.fillStyle = '#94a3b8'; ctx.fillRect(450, 300, 6, 80); ctx.fillRect(550, 300, 6, 80); // Столбы
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(450, 300, 6, 80); ctx.fillRect(550, 300, 6, 80); 
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
       for(let i=310; i<=350; i+=10) { ctx.beginPath(); ctx.moveTo(456, i); ctx.lineTo(550, i); ctx.stroke(); }
       for(let i=460; i<=540; i+=10) { ctx.beginPath(); ctx.moveTo(i, 310); ctx.lineTo(i, 350); ctx.stroke(); }
-      ctx.fillStyle = '#fff'; ctx.fillRect(456, 305, 94, 5); // Верхний край сетки
+      ctx.fillStyle = '#fff'; ctx.fillRect(456, 305, 94, 5); 
 
-      // Доска для серфинга
       ctx.fillStyle = '#f43f5e'; ctx.beginPath(); ctx.ellipse(650, 450, 15, 60, Math.PI/12, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(650, 450, 4, 55, Math.PI/12, 0, Math.PI*2); ctx.fill(); // Полоса на доске
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(650, 450, 4, 55, Math.PI/12, 0, Math.PI*2); ctx.fill(); 
 
-      // Зонтик
       ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(200, 250, 60, Math.PI, 0); ctx.fill();
       ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.moveTo(200, 190); ctx.lineTo(170, 250); ctx.lineTo(230, 250); ctx.fill();
-      ctx.fillStyle = '#d97706'; ctx.fillRect(198, 250, 4, 60); // Палка
-      // Полотенце
+      ctx.fillStyle = '#d97706'; ctx.fillRect(198, 250, 4, 60); 
+      
       ctx.fillStyle = '#3b82f6'; ctx.fillRect(160, 300, 80, 40);
       ctx.fillStyle = '#fff'; ctx.fillRect(170, 300, 10, 40); ctx.fillRect(220, 300, 10, 40);
-      // Замок из песка
-      ctx.fillStyle = '#fcd34d'; ctx.fillRect(350, 450, 40, 30); ctx.fillRect(355, 430, 10, 20); ctx.fillRect(375, 430, 10, 20);
-      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(360, 430); ctx.lineTo(360, 410); ctx.lineTo(375, 420); ctx.fill(); // Флажок
       
-      // Морская звезда
+      ctx.fillStyle = '#fcd34d'; ctx.fillRect(350, 450, 40, 30); ctx.fillRect(355, 430, 10, 20); ctx.fillRect(375, 430, 10, 20);
+      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(360, 430); ctx.lineTo(360, 410); ctx.lineTo(375, 420); ctx.fill(); 
+      
       ctx.fillStyle = '#f87171';
       const drawStar = (cx, cy, spikes, outerRadius, innerRadius) => {
         let rot=Math.PI/2*3; let x=cx; let y=cy; let step=Math.PI/spikes;
@@ -1298,30 +1140,25 @@ function updateProfileDisplay() {
       let bedFront = player.equippedFurniture.bed === 'bed_pink' ? '#ec4899' : '#3b82f6';
       let bedSide = player.equippedFurniture.bed === 'bed_pink' ? '#be185d' : '#1d4ed8';
 
-      // Пол
       ctx.fillStyle = floorColor; ctx.fillRect(0, 0, canvas.width, canvas.height); 
       for (let y = 180; y < canvas.height; y += 40) {
         ctx.strokeStyle = floorStroke; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
 
-      // Сетка поверх пола в режиме ремонта
       if (isRepairMode) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1;
         for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 180); ctx.lineTo(x, canvas.height); ctx.stroke(); }
         for (let y = 180; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
       }
       
-      // Обои и плинтус
       ctx.fillStyle = wallColor; ctx.fillRect(0, 0, canvas.width, 180); 
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 175, canvas.width, 10);
 
-      // Картины на стене
       ctx.fillStyle = '#f59e0b'; ctx.fillRect(100, 40, 50, 60); ctx.fillStyle = '#fff'; ctx.fillRect(105, 45, 40, 50); 
       ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(125, 70, 10, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#f59e0b'; ctx.fillRect(350, 50, 60, 40); ctx.fillStyle = '#fff'; ctx.fillRect(355, 55, 50, 30); 
       ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.moveTo(360, 80); ctx.lineTo(380, 60); ctx.lineTo(400, 80); ctx.fill();
 
-      // Окно с занавесками
       ctx.fillStyle = '#bae6fd'; ctx.fillRect(440, 40, 160, 100);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(440, 40, 160, 100);
       ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(520, 40); ctx.lineTo(520, 140); ctx.stroke();
@@ -1330,7 +1167,6 @@ function updateProfileDisplay() {
       ctx.beginPath(); ctx.moveTo(430, 30); ctx.lineTo(480, 30); ctx.lineTo(460, 150); ctx.lineTo(430, 150); ctx.fill();
       ctx.beginPath(); ctx.moveTo(610, 30); ctx.lineTo(560, 30); ctx.lineTo(580, 150); ctx.lineTo(610, 150); ctx.fill();
 
-      // Динамические объекты дома
       const homeItems = [
         { 
           id: 'rug', y: pos.rug.y, 
@@ -1410,14 +1246,55 @@ function updateProfileDisplay() {
           id: 'tv', y: pos.tv.y,
           draw: () => {
             let tx = pos.tv.x, ty = pos.tv.y;
-            ctx.fillStyle = '#334155'; ctx.fillRect(tx + 70, ty + 100, 40, 15); // Настенное крепление
+            ctx.fillStyle = '#334155'; ctx.fillRect(tx + 70, ty + 100, 40, 15); 
             ctx.fillStyle = '#111827'; ctx.fillRect(tx, ty, 180, 100); ctx.fillStyle = '#1e3a8a'; ctx.fillRect(tx + 5, ty + 5, 170, 90);
             ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('📺 RULIMONY', tx + 90, ty + 55);
           }
         });
       }
 
-      // Отрисовываем мебель (Сортировка по Z, затем по Y)
+      if (player.equippedFurniture.sofa) {
+        homeItems.push({
+          id: 'sofa', y: pos.sofa.y,
+          draw: () => {
+            let sx = pos.sofa.x, sy = pos.sofa.y;
+            draw3DBox(sx, sy, 140, 40, 40, '#60a5fa', '#3b82f6', '#2563eb'); 
+            draw3DBox(sx, sy-40, 140, 40, 10, '#93c5fd', '#60a5fa', '#3b82f6'); 
+            draw3DBox(sx-10, sy-20, 20, 30, 45, '#3b82f6', '#2563eb', '#1d4ed8'); 
+            draw3DBox(sx+130, sy-20, 20, 30, 45, '#3b82f6', '#2563eb', '#1d4ed8'); 
+          }
+        });
+      }
+
+      if (player.equippedFurniture.decor) {
+        homeItems.push({
+          id: 'decor', y: pos.decor.y,
+          draw: () => {
+            let dx = pos.decor.x, dy = pos.decor.y;
+            ctx.fillStyle = '#d97706'; ctx.fillRect(dx, dy, 24, 30); 
+            ctx.fillStyle = '#22c55e'; ctx.fillRect(dx+10, dy-30, 4, 30); 
+            ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(dx+12, dy-30, 8, 0, Math.PI*2); ctx.fill(); 
+            ctx.fillStyle = '#ef4444'; 
+            for(let i=0; i<5; i++) {
+                ctx.beginPath(); ctx.arc(dx+12 + Math.cos(i*Math.PI*2/5)*12, dy-30 + Math.sin(i*Math.PI*2/5)*12, 6, 0, Math.PI*2); ctx.fill();
+            }
+          }
+        });
+      }
+
+      if (player.equippedFurniture.lamp) {
+        homeItems.push({
+          id: 'lamp', y: pos.lamp.y,
+          draw: () => {
+            let lx = pos.lamp.x, ly = pos.lamp.y;
+            ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.ellipse(lx+15, ly+40, 20, 8, 0, 0, Math.PI*2); ctx.fill(); 
+            ctx.fillRect(lx+12, ly-40, 6, 80); 
+            ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.moveTo(lx-5, ly-40); ctx.lineTo(lx+35, ly-40); ctx.lineTo(lx+25, ly-70); ctx.lineTo(lx+5, ly-70); ctx.fill(); 
+            ctx.fillStyle = 'rgba(253, 224, 71, 0.4)'; ctx.beginPath(); ctx.moveTo(lx-20, ly+40); ctx.lineTo(lx+50, ly+40); ctx.lineTo(lx+35, ly-40); ctx.lineTo(lx-5, ly-40); ctx.fill(); 
+          }
+        });
+      }
+
       homeItems.sort((a, b) => {
         let zA = pos[a.id].z || 0; let zB = pos[b.id].z || 0;
         if (zA === zB) return a.y - b.y;
@@ -1427,74 +1304,59 @@ function updateProfileDisplay() {
       ctx.fillStyle = '#334155'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🏠 МОЙ ДОМ', 520, 30);
     } 
     else if (currentLocation === 'hospital') {
-      // Обновленный дизайн Больницы
-      // Белый кафельный пол
       ctx.fillStyle = '#f0fdf4'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
       ctx.strokeStyle = '#dcfce7'; ctx.lineWidth = 2;
       for(let x=0; x<canvas.width; x+=40) { ctx.beginPath(); ctx.moveTo(x, 180); ctx.lineTo(x, canvas.height); ctx.stroke(); }
       for(let y=180; y<canvas.height; y+=40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
       
-      // Светло-голубая стена
       ctx.fillStyle = '#e0f2fe'; ctx.fillRect(0, 0, canvas.width, 180);
-      ctx.fillStyle = '#bae6fd'; ctx.fillRect(0, 175, canvas.width, 5); // Плинтус
+      ctx.fillStyle = '#bae6fd'; ctx.fillRect(0, 175, canvas.width, 5); 
       
-      // Большой красный крест
       ctx.fillStyle = '#ef4444'; ctx.fillRect(500, 50, 40, 100); ctx.fillRect(470, 80, 100, 40);
 
-      // Анатомический плакат на стене
       ctx.fillStyle = '#fff'; ctx.fillRect(750, 50, 70, 100); ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.strokeRect(750, 50, 70, 100);
-      ctx.fillStyle = '#fca5a5'; ctx.beginPath(); ctx.ellipse(785, 100, 20, 30, 0, 0, Math.PI*2); ctx.fill(); // Торс на плакате
-      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(780, 90, 5, 0, Math.PI*2); ctx.fill(); // Сердце
-      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.ellipse(792, 100, 6, 12, Math.PI/4, 0, Math.PI*2); ctx.fill(); // Легкие
+      ctx.fillStyle = '#fca5a5'; ctx.beginPath(); ctx.ellipse(785, 100, 20, 30, 0, 0, Math.PI*2); ctx.fill(); 
+      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(780, 90, 5, 0, Math.PI*2); ctx.fill(); 
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.ellipse(792, 100, 6, 12, Math.PI/4, 0, Math.PI*2); ctx.fill(); 
       
-      // Стойка регистрации (Reception)
       draw3DBox(120, 250, 200, 60, 40, '#ffffff', '#f8fafc', '#e2e8f0');
-      // Компьютер на стойке
       draw3DBox(180, 230, 40, 30, 10, '#334155', '#1e293b', '#0f172a');
       ctx.fillStyle = '#38bdf8'; ctx.fillRect(182, 232, 36, 20);
-      // Маленький крест на стойке
       ctx.fillStyle = '#ef4444'; ctx.fillRect(215, 275, 10, 25); ctx.fillRect(207, 282, 26, 10);
       
-      // Медицинский шкафчик (за стойкой или сбоку)
-      draw3DBox(40, 120, 70, 120, 30, '#f1f5f9', '#e2e8f0', '#cbd5e1'); // Корпус
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.fillRect(45, 130, 60, 100); // Стекло
+      draw3DBox(40, 120, 70, 120, 30, '#f1f5f9', '#e2e8f0', '#cbd5e1'); 
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.fillRect(45, 130, 60, 100); 
       ctx.strokeStyle = '#94a3b8'; ctx.strokeRect(45, 130, 60, 100);
-      ctx.fillStyle = '#10b981'; ctx.fillRect(50, 140, 10, 15); // Банка с лекарством 1
-      ctx.fillStyle = '#f59e0b'; ctx.fillRect(70, 145, 15, 10); // Банка с лекарством 2
-      ctx.fillStyle = '#ef4444'; ctx.fillRect(55, 180, 20, 10); // Аптечка
+      ctx.fillStyle = '#10b981'; ctx.fillRect(50, 140, 10, 15); 
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(70, 145, 15, 10); 
+      ctx.fillStyle = '#ef4444'; ctx.fillRect(55, 180, 20, 10); 
 
-      // Больничная койка
-      draw3DBox(700, 320, 160, 30, 70, '#f1f5f9', '#cbd5e1', '#94a3b8'); // Каркас
-      draw3DBox(710, 310, 140, 10, 60, '#ffffff', '#f8fafc', '#e2e8f0'); // Матрас
-      draw3DBox(820, 300, 30, 10, 40, '#bae6fd', '#7dd3fc', '#38bdf8'); // Подушка
+      draw3DBox(700, 320, 160, 30, 70, '#f1f5f9', '#cbd5e1', '#94a3b8'); 
+      draw3DBox(710, 310, 140, 10, 60, '#ffffff', '#f8fafc', '#e2e8f0'); 
+      draw3DBox(820, 300, 30, 10, 40, '#bae6fd', '#7dd3fc', '#38bdf8'); 
 
-      // Капельница (IV Drip) возле койки
-      ctx.fillStyle = '#94a3b8'; ctx.fillRect(680, 200, 4, 130); // Стойка
-      ctx.fillRect(665, 330, 34, 4); // База
-      ctx.fillStyle = '#e0f2fe'; ctx.beginPath(); ctx.roundRect(675, 210, 14, 25, 4); ctx.fill(); // Пакет с раствором
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(680, 200, 4, 130); 
+      ctx.fillRect(665, 330, 34, 4); 
+      ctx.fillStyle = '#e0f2fe'; ctx.beginPath(); ctx.roundRect(675, 210, 14, 25, 4); ctx.fill(); 
       ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(682, 235); ctx.lineTo(682, 310); ctx.lineTo(720, 310); ctx.stroke(); // Трубочка к кровати
+      ctx.beginPath(); ctx.moveTo(682, 235); ctx.lineTo(682, 310); ctx.lineTo(720, 310); ctx.stroke(); 
       
-      // Аппарат ЭКГ (монитор сердечного ритма)
-      draw3DBox(880, 270, 40, 50, 30, '#e2e8f0', '#cbd5e1', '#94a3b8'); // Корпус
-      ctx.fillStyle = '#111827'; ctx.fillRect(885, 275, 30, 30); // Экран
-      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; // Линия пульса
+      draw3DBox(880, 270, 40, 50, 30, '#e2e8f0', '#cbd5e1', '#94a3b8'); 
+      ctx.fillStyle = '#111827'; ctx.fillRect(885, 275, 30, 30); 
+      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; 
       ctx.beginPath(); ctx.moveTo(885, 290); ctx.lineTo(895, 290); ctx.lineTo(900, 280); ctx.lineTo(905, 300); ctx.lineTo(910, 290); ctx.lineTo(915, 290); ctx.stroke();
 
-      // Кулер с водой
-      draw3DBox(370, 220, 35, 50, 25, '#f8fafc', '#e2e8f0', '#cbd5e1'); // Корпус кулера
-      ctx.fillStyle = '#bae6fd'; ctx.beginPath(); ctx.roundRect(372, 180, 31, 40, 4); ctx.fill(); // Бутыль с водой
-      ctx.fillStyle = '#ef4444'; ctx.fillRect(375, 230, 6, 8); // Красный кран
-      ctx.fillStyle = '#3b82f6'; ctx.fillRect(390, 230, 6, 8); // Синий кран
+      draw3DBox(370, 220, 35, 50, 25, '#f8fafc', '#e2e8f0', '#cbd5e1'); 
+      ctx.fillStyle = '#bae6fd'; ctx.beginPath(); ctx.roundRect(372, 180, 31, 40, 4); ctx.fill(); 
+      ctx.fillStyle = '#ef4444'; ctx.fillRect(375, 230, 6, 8); 
+      ctx.fillStyle = '#3b82f6'; ctx.fillRect(390, 230, 6, 8); 
 
-      // Сиденья для ожидания
       const drawChair = (cx, cy) => {
-         draw3DBox(cx, cy, 30, 10, 30, '#60a5fa', '#3b82f6', '#2563eb'); // Сидушка
-         draw3DBox(cx, cy-30, 30, 30, 5, '#93c5fd', '#60a5fa', '#3b82f6'); // Спинка
+         draw3DBox(cx, cy, 30, 10, 30, '#60a5fa', '#3b82f6', '#2563eb'); 
+         draw3DBox(cx, cy-30, 30, 30, 5, '#93c5fd', '#60a5fa', '#3b82f6'); 
       };
       drawChair(50, 400); drawChair(85, 400); drawChair(120, 400);
 
-      // Название
       ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; 
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
       ctx.fillText('🏥 ГОРОДСКАЯ БОЛЬНИЦА', 520, 30);
@@ -1535,6 +1397,8 @@ function updateProfileDisplay() {
       else if (accId === 'scarf') { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.roundRect(char.x - 18, char.y + 12, 36, 12, 6); ctx.fill(); ctx.fillRect(char.x + 5, char.y + 12, 10, 20); } 
       else if (accId === 'bowtie') { ctx.fillStyle = '#ec4899'; ctx.beginPath(); ctx.moveTo(char.x, char.y + 16); ctx.lineTo(char.x - 12, char.y + 8); ctx.lineTo(char.x - 12, char.y + 24); ctx.fill(); ctx.beginPath(); ctx.moveTo(char.x, char.y + 16); ctx.lineTo(char.x + 12, char.y + 8); ctx.lineTo(char.x + 12, char.y + 24); ctx.fill(); ctx.fillStyle = '#be185d'; ctx.beginPath(); ctx.arc(char.x, char.y + 16, 4, 0, Math.PI*2); ctx.fill(); }
       else if (accId === 'tie') { ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(char.x-4, char.y+12); ctx.lineTo(char.x+4, char.y+12); ctx.lineTo(char.x+6, char.y+30); ctx.lineTo(char.x, char.y+35); ctx.lineTo(char.x-6, char.y+30); ctx.fill(); }
+      else if (accId === 'mustache') { ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.moveTo(char.x-10, char.y+8); ctx.quadraticCurveTo(char.x, char.y+2, char.x+10, char.y+8); ctx.quadraticCurveTo(char.x, char.y+12, char.x-10, char.y+8); ctx.fill(); }
+      else if (accId === 'lifebuoy') { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10; ctx.beginPath(); ctx.ellipse(char.x, char.y + 15, 24, 10, 0, 0, Math.PI*2); ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.setLineDash([8, 12]); ctx.stroke(); ctx.setLineDash([]); }
     }
     if (char.equipped && char.equipped.hat) {
       const hatId = char.equipped.hat;
@@ -1542,6 +1406,7 @@ function updateProfileDisplay() {
       else if (hatId === 'crown') { ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.moveTo(char.x - 15, char.y - char.radius + 6); ctx.lineTo(char.x + 15, char.y - char.radius + 6); ctx.lineTo(char.x + 20, char.y - char.radius - 12); ctx.lineTo(char.x + 5, char.y - char.radius - 2); ctx.lineTo(char.x, char.y - char.radius - 16); ctx.lineTo(char.x - 5, char.y - char.radius - 2); ctx.lineTo(char.x - 20, char.y - char.radius - 12); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(char.x, char.y - char.radius - 8, 3, 0, Math.PI*2); ctx.fill(); } 
       else if (hatId === 'headphones') { ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(char.x, char.y - 5, char.radius + 2, Math.PI, 0); ctx.stroke(); ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.roundRect(char.x - char.radius - 6, char.y - 12, 10, 24, 4); ctx.roundRect(char.x + char.radius - 4, char.y - 12, 10, 24, 4); ctx.fill(); }
       else if (hatId === 'halo') { ctx.strokeStyle = '#fde047'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(char.x, char.y - char.radius - 10, 16, 6, 0, 0, Math.PI*2); ctx.stroke(); }
+      else if (hatId === 'sombrero') { ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.ellipse(char.x, char.y - char.radius, 30, 8, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(char.x, char.y - char.radius, 14, Math.PI, 0); ctx.fill(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth=3; ctx.beginPath(); ctx.ellipse(char.x, char.y - char.radius - 2, 14, 4, 0, 0, Math.PI*2); ctx.stroke(); }
     }
 
     ctx.font = 'bold 13px sans-serif'; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
@@ -1563,11 +1428,10 @@ function updateProfileDisplay() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawEnvironment(); drawExits();
     if(currentLocation === 'square' || currentLocation === 'park' || currentLocation === 'cafe') drawCharacter(npc);
-    // Отрисовка всех мультиплеерных игроков, если они в одной комнате с нами
     Object.keys(otherPlayers).forEach((id) => {
       let p = otherPlayers[id];
       if (p.currentLocation === currentLocation) {
-        drawCharacter(p); // Функция drawCharacter сама будет плавно двигать их к targetX/Y
+        drawCharacter(p); 
       }
     });
     drawCharacter(player);
@@ -1601,7 +1465,7 @@ function updateProfileDisplay() {
      miniScore += 10; 
      player.coins += 1; 
      miniEarnedCoins += 1;
-     miniEarnedXP += 5; // 5 XP per action
+     miniEarnedXP += 5; 
      updateScoreDisplay(); 
      updateCoinsDisplay();
   }
@@ -1659,8 +1523,13 @@ function updateProfileDisplay() {
         
         for (let i = gameItems.length - 1; i >= 0; i--) {
           let a = gameItems[i]; a.y += a.speed;
-          miniCtx.fillStyle = minigameType === 'apples' ? '#ef4444' : '#d97706';
-          miniCtx.beginPath(); miniCtx.arc(a.x, a.y, 10, 0, Math.PI * 2); miniCtx.fill();
+          
+          miniCtx.font = '24px sans-serif';
+          miniCtx.textAlign = 'center';
+          miniCtx.textBaseline = 'middle';
+          let emoji = minigameType === 'apples' ? '🍎' : '🥐';
+          miniCtx.fillText(emoji, a.x, a.y);
+          
           if (a.y >= miniCanvas.height - 35 && a.x >= basket.x && a.x <= basket.x + basket.width) {
             gameItems.splice(i, 1); registerScoreEarn();
           } else if (a.y > miniCanvas.height) { gameItems.splice(i, 1); }
@@ -1670,21 +1539,17 @@ function updateProfileDisplay() {
         miniCtx.fillStyle = '#0ea5e9'; miniCtx.fillRect(0,0,440,150); 
         miniCtx.fillStyle = '#fde047'; miniCtx.fillRect(0,150,440,150); 
         
-        // Сетка
         miniCtx.fillStyle = '#94a3b8'; miniCtx.fillRect(215, 80, 10, 100); 
         miniCtx.strokeStyle = '#fff'; miniCtx.lineWidth = 1;
         for(let i=90; i<=170; i+=10) { miniCtx.beginPath(); miniCtx.moveTo(215, i); miniCtx.lineTo(225, i); miniCtx.stroke(); }
 
-        // Игрок и прыжок
         let playerY = volleyBall.state === 'hit' ? 120 : 150;
         miniCtx.fillStyle = '#3b82f6'; miniCtx.beginPath(); miniCtx.arc(50, playerY, 15, 0, Math.PI*2); miniCtx.fill();
         
-        // Противник (ждет мяч)
         miniCtx.fillStyle = '#ef4444'; miniCtx.beginPath(); miniCtx.arc(390, 150, 15, 0, Math.PI*2); miniCtx.fill();
 
         if (volleyBall.state === 'hit') {
           volleyBall.x += volleyBall.vx; volleyBall.vy += 0.3; volleyBall.y += volleyBall.vy;
-          // Противник "ловит" и мы получаем очко
           if (volleyBall.y > 140 && volleyBall.x > 370) { 
               volleyBall.state = 'idle'; volleyBall.x = 60; volleyBall.y = 140; 
           }
@@ -1693,7 +1558,6 @@ function updateProfileDisplay() {
           if (volleyBall.y > 180) { volleyBall.state = 'idle'; volleyBall.x = 60; volleyBall.y = 140; }
         }
         
-        // Красивый мячик
         miniCtx.fillStyle = '#fff'; miniCtx.beginPath(); miniCtx.arc(volleyBall.x, volleyBall.y, 8, 0, Math.PI*2); miniCtx.fill();
         miniCtx.strokeStyle = '#000'; miniCtx.lineWidth = 1; miniCtx.beginPath(); miniCtx.arc(volleyBall.x, volleyBall.y, 8, 0, Math.PI*2); miniCtx.stroke();
         miniCtx.beginPath(); miniCtx.moveTo(volleyBall.x - 5, volleyBall.y - 5); miniCtx.lineTo(volleyBall.x + 5, volleyBall.y + 5); miniCtx.stroke();
