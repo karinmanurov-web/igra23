@@ -1874,7 +1874,16 @@
   function stopMinigame() { 
       if (miniLoopId) cancelAnimationFrame(miniLoopId); 
       if (miniEarnedXP > 0) addXP(miniEarnedXP); 
+}
+
+  // ВСТАВЛЯЙТЕ СЮДА (в самый конец скрипта):
+  function visitFriend(friendName) {
+    closeModal('profileModal');
+    player.speechBubble.text = `Иду в гости к ${friendName}!`;
+    player.speechBubble.timer = 150;
+    changeLocation('home', null, friendName); 
   }
+
 </script>
 </body>
 </html>
