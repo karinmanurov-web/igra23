@@ -106,52 +106,103 @@ io.on('connection', (socket) => {
     );
   });
 
-  // 4. Обработка движения: когда игрок кликает по экрану
+// --- ОБНОВЛЕННАЯ СИСТЕМА КОМНАТ (ROOMS) ---
+
+  // Обработка движения в пределах одной комнаты
   socket.on('playerMovement', (movementData) => {
     if (onlinePlayers[socket.id]) {
       onlinePlayers[socket.id].targetX = movementData.targetX;
       onlinePlayers[socket.id].targetY = movementData.targetY;
-      onlinePlayers[socket.id].currentLocation = movementData.currentLocation;
-      
-      socket.broadcast.emit('playerMoved', onlinePlayers[socket.id]);
+      const room = onlinePlayers[socket.id].room || 'square';
+      // Отправляем движение только тем, кто в той же комнате
+      socket.broadcast.to(room).emit('playerMoved', onlinePlayers[socket.id]);
     }
   });
 
-  // 5. Обработка телепортации
-  socket.on('locationTeleport', (teleportData) => {
+  // Переход между локациями и поход в гости
+  socket.on('locationTeleport', async (data) => {
     if (onlinePlayers[socket.id]) {
-      onlinePlayers[socket.id].x = teleportData.x;
-      onlinePlayers[socket.id].y = teleportData.y;
-      onlinePlayers[socket.id].targetX = teleportData.targetX;
-      onlinePlayers[socket.id].targetY = teleportData.targetY;
-      onlinePlayers[socket.id].currentLocation = teleportData.currentLocation;
-      
-      socket.broadcast.emit('playerTeleported', onlinePlayers[socket.id]);
+      const p = onlinePlayers[socket.id];
+      const oldRoom = p.room || 'square';
+      // Если идем домой, название комнаты = "home_ИмяВладельца", иначе = название локации
+      const newRoom = data.currentLocation === 'home' ? 'home_' + data.homeOwner : data.currentLocation;
+
+      // Выходим из старой комнаты
+      socket.leave(oldRoom);
+      socket.broadcast.to(oldRoom).emit('playerLeftRoom', socket.id);
+
+      p.x = data.x; p.y = data.y;
+      p.targetX = data.targetX; p.targetY = data.targetY;
+      p.currentLocation = data.currentLocation;
+      p.room = newRoom;
+
+      // Заходим в новую комнату
+      socket.join(newRoom);
+
+      // Если это дом, грузим мебель владельца из БД!
+      if (data.currentLocation === 'home' && data.homeOwner) {
+        // Подключаемся к коллекции users
+        const houseOwner = await db.collection('users').findOne({ username: data.homeOwner });
+        if (houseOwner) {
+          socket.emit('loadHouse', {
+            equippedFurniture: houseOwner.equippedFurniture,
+            homeColors: houseOwner.homeColors,
+            furniturePos: houseOwner.furniturePos
+          });
+        }
+      }
+
+      // Показываем нас новым соседям по комнате
+      socket.broadcast.to(newRoom).emit('newPlayer', p);
+
+      // Отправляем нам список игроков, которые УЖЕ есть в новой комнате
+      const playersInRoom = {};
+      for (let id in onlinePlayers) {
+        if (onlinePlayers[id].room === newRoom) {
+          playersInRoom[id] = onlinePlayers[id];
+        }
+      }
+      socket.emit('currentPlayers', playersInRoom);
     }
   });
 
-  // 6. Обработка изменения внешности (цвет + одежда) - Этап 1
-  socket.on('playerAppearance', (data) => {
-    if (onlinePlayers[socket.id]) {
-      onlinePlayers[socket.id].color = data.color;
-      onlinePlayers[socket.id].equipped = data.equipped;
-
-      socket.broadcast.emit('playerAppearanceChanged', {
-        id: socket.id,
-        color: data.color,
-        equipped: data.equipped
-      });
-    }
-  });
-
-  // 7. Синхронизация текста в чате
+  // Чат и внешность (рассылаем только по своей комнате)
   socket.on('chatMessage', (chatData) => {
     if (onlinePlayers[socket.id]) {
-      onlinePlayers[socket.id].speechBubble = chatData;
-      socket.broadcast.emit('playerSpoke', {
-        id: socket.id,
-        speechBubble: chatData
-      });
+      const room = onlinePlayers[socket.id].room || 'square';
+      socket.broadcast.to(room).emit('playerSpoke', { id: socket.id, speechBubble: chatData });
+    }
+  });
+  socket.on('playerAppearance', (appData) => {
+    if (onlinePlayers[socket.id]) {
+      const room = onlinePlayers[socket.id].room || 'square';
+      onlinePlayers[socket.id].color = appData.color;
+      onlinePlayers[socket.id].equipped = appData.equipped;
+      socket.broadcast.to(room).emit('playerAppearanceChanged', { id: socket.id, ...appData });
+    }
+  });
+
+  // --- СИСТЕМА ДРУЗЕЙ ---
+  socket.on('sendFriendRequest', (targetUsername) => {
+    const target = Object.values(onlinePlayers).find(p => p.username === targetUsername);
+    if (target) {
+      io.to(target.id).emit('friendRequest', onlinePlayers[socket.id].username); // Отправляем запрос
+    }
+  });
+
+  socket.on('acceptFriend', async (requesterUsername) => {
+    const p = onlinePlayers[socket.id];
+    if(!p) return;
+    
+    // Добавляем в БД обоим игрокам (убедитесь, что переменная db у вас объявлена)
+    await db.collection('users').updateOne({username: p.username}, {$addToSet: {friends: requesterUsername}});
+    await db.collection('users').updateOne({username: requesterUsername}, {$addToSet: {friends: p.username}});
+
+    // Уведомляем обоих
+    socket.emit('friendAdded', requesterUsername);
+    const reqPlayer = Object.values(onlinePlayers).find(pl => pl.username === requesterUsername);
+    if (reqPlayer) {
+      io.to(reqPlayer.id).emit('friendAdded', p.username);
     }
   });
 
