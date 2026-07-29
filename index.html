@@ -76,10 +76,33 @@
     .xp-bar-container { background: #334155; border-radius: 10px; height: 18px; margin-top: 10px; overflow: hidden; position: relative; border: 1px solid #475569;}
     .xp-bar-fill { background: linear-gradient(90deg, #10b981, #34d399); height: 100%; width: 0%; transition: width 0.3s; }
     .xp-bar-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 11px; line-height: 18px; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); color: #fff; }
+
+    /* --- AUTH SCREEN --- */
+    #authScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 22, 37, 0.95); backdrop-filter: blur(10px); z-index: 2000; display: flex; justify-content: center; align-items: center; }
+    .auth-card { background: #1e293b; border: 2px solid #38bdf8; border-radius: 20px; padding: 30px; width: 400px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
+    .auth-title { color: #38bdf8; font-size: 28px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+    .auth-input { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #4a6296; background: #0f172a; color: #fff; font-size: 16px; outline: none; transition: 0.2s; }
+    .auth-input:focus { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+    .auth-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-bottom: 10px; font-size: 16px; }
+    .btn-login { background: #3b82f6; color: #fff; } .btn-login:hover { background: #2563eb; transform: translateY(-2px); }
+    .btn-reg { background: #10b981; color: #fff; } .btn-reg:hover { background: #059669; transform: translateY(-2px); }
+    #authError { color: #ef4444; font-size: 14px; min-height: 20px; margin-bottom: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
 <div id="gameContainer">
+  <!-- AUTH SCREEN -->
+  <div id="authScreen">
+    <div class="auth-card">
+      <div class="auth-title">RULIMONY</div>
+      <div id="authError"></div>
+      <input type="text" id="authLogin" class="auth-input" placeholder="Логин (Никнейм)" maxlength="16">
+      <input type="password" id="authPass" class="auth-input" placeholder="Пароль">
+      <button class="auth-btn btn-login" onclick="attemptAuth('login')">Войти в игру</button>
+      <button class="auth-btn btn-reg" onclick="attemptAuth('register')">Создать аккаунт</button>
+    </div>
+  </div>
+
   <!-- Game World Canvas -->
   <canvas id="gameCanvas" width="1040" height="640"></canvas>
 
@@ -276,8 +299,9 @@
   let hoveredExit = null;
 
   // --- СЕТЕВАЯ ЧАСТЬ (МУЛЬТИПЛЕЕР) ---
-  const socket = io(); 
-  let otherPlayers = {}; 
+  const socket = io(); // Автоматически подключается к хосту сервера
+  let otherPlayers = {}; // Здесь будут храниться все другие игроки онлайн
+  let isLoggedIn = false; // Флаг авторизации
 
   // Функция для отправки нашей внешности на сервер (Этап 1)
   function emitAppearance() {
@@ -344,6 +368,59 @@
       showChat();
     }
   });
+
+  // --- АВТОРИЗАЦИЯ И СИНХРОНИЗАЦИЯ С БД ---
+  function attemptAuth(action) {
+    const username = document.getElementById('authLogin').value.trim();
+    const password = document.getElementById('authPass').value.trim();
+    const errBox = document.getElementById('authError');
+    
+    if (username.length < 3 || password.length < 3) {
+        errBox.innerText = 'Логин и пароль должны быть от 3 символов!';
+        return;
+    }
+    errBox.style.color = '#fff';
+    errBox.innerText = 'Загрузка...';
+    socket.emit(action, { username, password });
+  }
+
+  socket.on('registerSuccess', () => {
+      document.getElementById('authError').style.color = '#10b981';
+      document.getElementById('authError').innerText = 'Аккаунт создан! Теперь нажмите "Войти".';
+  });
+
+  socket.on('registerError', (msg) => {
+      document.getElementById('authError').style.color = '#ef4444';
+      document.getElementById('authError').innerText = msg;
+  });
+
+  socket.on('loginError', (msg) => {
+      document.getElementById('authError').style.color = '#ef4444';
+      document.getElementById('authError').innerText = msg;
+  });
+
+  socket.on('loginSuccess', (data) => {
+      isLoggedIn = true;
+      document.getElementById('authScreen').style.display = 'none';
+      
+      // Загружаем данные из БД в локального игрока
+      Object.assign(player, data.playerData);
+      player.name = data.playerData.username;
+      
+      updateProfileDisplay();
+      updateCoinsDisplay();
+      
+      // Появляемся в мире
+      socket.emit('locationTeleport', { x: player.x, y: player.y, targetX: player.targetX, targetY: player.targetY, currentLocation: currentLocation });
+      emitAppearance();
+  });
+
+  // Автосохранение прогресса на сервер каждые 5 секунд
+  setInterval(() => {
+      if (isLoggedIn) {
+          socket.emit('syncData', player);
+      }
+  }, 5000);
 
   // --- PLAYER STATE ---
   const player = {
@@ -589,6 +666,7 @@
   });
 
   canvas.addEventListener('click', (e) => {
+    if (!isLoggedIn) return; // Блокируем клики и ходьбу до авторизации
     if (isRepairMode) return; 
 
     const rect = canvas.getBoundingClientRect();
