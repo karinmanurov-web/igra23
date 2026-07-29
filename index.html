@@ -117,6 +117,7 @@
         <button class="tab-btn" onclick="switchTab('inventory', event)">Вещи</button>
         <button class="tab-btn" onclick="switchTab('home', event)">Дом 🏠</button>
         <button class="tab-btn" onclick="switchTab('food', event)">Еда 🍔</button>
+        <button class="tab-btn" onclick="switchTab('friends', event)">Друзья</button>
       </div>
 
       <div id="tab-profile" class="tab-content" style="text-align: center; color: #94a3b8; padding-top: 10px;">
@@ -181,6 +182,11 @@
         <p style="text-align: center; color: #94a3b8; font-size: 13px; margin-bottom: 10px;">Кликни на еду, чтобы съесть её и получить XP!</p>
         <div class="inventory-grid" id="foodInventoryGrid"></div>
       </div>
+      
+      <div id="tab-friends" class="tab-content" style="display: none; padding-right: 5px;">
+        <p style="text-align: center; color: #94a3b8; font-size: 13px; margin-bottom: 10px;">Мой список друзей:</p>
+        <div id="friendsGrid" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;"></div>
+      </div>
     </div>
   </div>
 
@@ -229,6 +235,15 @@
       <div style="margin-top: 10px; font-weight: bold; font-size: 16px; color: #f59e0b;" id="minigameScore">Счет: 0 | Монеты: +0 | XP: +0</div>
     </div>
   </div>
+
+  <!-- PLAYER ACTION MODAL (MINI) -->
+  <div id="playerActionModal" style="display:none; position:absolute; z-index:50; background:#1e293b; border:2px solid #38bdf8; padding:12px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.8);">
+     <div id="actionPlayerName" style="color:#fff; font-weight:bold; margin-bottom:10px; text-align:center; font-size: 16px;">Игрок</div>
+     <div style="display:flex; gap:8px; justify-content:center;">
+       <button onclick="addFriend()" style="background:#10b981; border:none; padding:6px 12px; border-radius:8px; color:#fff; cursor:pointer; font-weight:bold; transition: 0.2s;">В друзья</button>
+       <button onclick="closePlayerAction()" style="background:#ef4444; border:none; padding:6px 12px; border-radius:8px; color:#fff; cursor:pointer; font-weight:bold; transition: 0.2s;">Закрыть</button>
+     </div>
+  </div>
 </div>
 
 <script>
@@ -276,7 +291,8 @@
   socket.on('currentPlayers', (players) => {
     Object.keys(players).forEach((id) => {
       if (id !== socket.id) {
-        otherPlayers[id] = players[id];
+        // ИСПРАВЛЕНИЕ БАГА: добавляем radius и speed по умолчанию!
+        otherPlayers[id] = { ...players[id], radius: 26, speed: 4.5 };
       } else {
         player.name = players[id].name;
       }
@@ -285,7 +301,9 @@
     emitAppearance();
   });
 
-  socket.on('newPlayer', (playerInfo) => { otherPlayers[playerInfo.id] = playerInfo; });
+  socket.on('newPlayer', (playerInfo) => { 
+    otherPlayers[playerInfo.id] = { ...playerInfo, radius: 26, speed: 4.5 }; 
+  });
   socket.on('playerDisconnected', (id) => { delete otherPlayers[id]; });
 
   socket.on('playerMoved', (playerInfo) => {
@@ -338,6 +356,7 @@
     furnitureInventory: [],
     equippedFurniture: { bed: null, floor: null, wall: null, table: null, tv: null, sofa: null, decor: null, lamp: null },
     homeColors: { wall: '#cbd5e1', floor: '#d97706' },
+    friends: [], // МАССИВ ДРУЗЕЙ (ЭТАП 2)
     furniturePos: {
       bed: { x: 120, y: 220, z: 0 },
       wardrobe: { x: 700, y: 150, z: 0 },
@@ -576,6 +595,25 @@
     const mx = e.clientX - rect.left; 
     const my = e.clientY - rect.top;
 
+    closePlayerAction(); // Закрываем менюшку, если кликнули в другое место
+
+    // ПРОВЕРКА КЛИКА ПО ДРУГИМ ИГРОКАМ (ЭТАП 2)
+    let clickedPlayerId = null;
+    for (let id in otherPlayers) {
+      let p = otherPlayers[id];
+      if (p.currentLocation !== currentLocation) continue;
+      let dist = Math.hypot(mx - p.x, my - p.y);
+      if (dist <= p.radius) {
+        clickedPlayerId = id;
+        break;
+      }
+    }
+
+    if (clickedPlayerId) {
+      openPlayerAction(clickedPlayerId, mx, my);
+      return; // Останавливаем обычную ходьбу, раз кликнули на персонажа
+    }
+
     if (hoveredExit) {
       player.targetX = hoveredExit.x + hoveredExit.w / 2;
       player.targetY = hoveredExit.y + hoveredExit.h / 2;
@@ -637,6 +675,7 @@
         renderInventory(); 
         renderHomeInventory(); 
         renderFoodInventory();
+        renderFriends();
     }
     if(id === 'minigameModal') startMinigame();
   }
@@ -649,6 +688,63 @@
   }
   
   function changeHomeColor(type, hex) { player.homeColors[type] = hex; }
+  
+  // --- ЛОГИКА ДРУЗЕЙ (ЭТАП 2) ---
+  let targetFriendId = null;
+  function openPlayerAction(id, mx, my) {
+    targetFriendId = id;
+    const p = otherPlayers[id];
+    const modal = document.getElementById('playerActionModal');
+    document.getElementById('actionPlayerName').innerText = p.name;
+    
+    let posX = mx + 20; let posY = my - 20;
+    if (posX > 850) posX -= 160; // Чтобы меню не вылезало за экран справа
+    
+    modal.style.left = posX + 'px';
+    modal.style.top = posY + 'px';
+    modal.style.display = 'block';
+  }
+
+  function closePlayerAction() {
+    document.getElementById('playerActionModal').style.display = 'none';
+    targetFriendId = null;
+  }
+
+  function addFriend() {
+    if(targetFriendId && !player.friends.includes(targetFriendId)) {
+      player.friends.push(targetFriendId);
+      player.speechBubble.text = 'Новый друг добавлен!';
+      player.speechBubble.timer = 150;
+      socket.emit('chatMessage', player.speechBubble); // Покажем сообщение всем!
+      showChat();
+    } else if (targetFriendId) {
+      player.speechBubble.text = 'Этот игрок уже в друзьях!';
+      player.speechBubble.timer = 150;
+      showChat();
+    }
+    closePlayerAction();
+  }
+
+  function renderFriends() {
+    const grid = document.getElementById('friendsGrid'); grid.innerHTML = '';
+    if(player.friends.length === 0) { 
+      grid.innerHTML = '<p style="text-align:center; color:#64748b; margin-top:20px;">У вас пока нет друзей.</p>'; 
+      return; 
+    }
+    
+    player.friends.forEach(fId => {
+      let fName = otherPlayers[fId] ? otherPlayers[fId].name : 'Офлайн (ID: ' + fId.substring(0,4) + ')';
+      let statusColor = otherPlayers[fId] ? '#10b981' : '#64748b';
+      let statusText = otherPlayers[fId] ? 'В сети' : 'Не в сети';
+      
+      grid.innerHTML += `<div style="background:#334155; padding:10px 15px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border: 1px solid #475569;">
+        <span style="color:#fff; font-weight:bold; font-size: 14px;">${fName}</span>
+        <span style="color:${statusColor}; font-size: 12px; font-weight: bold;">${statusText}</span>
+      </div>`;
+    });
+  }
+  // -----------------------------
+
   function updateCoinsDisplay() {
     document.getElementById('profileCoinsDisplay').innerText = `${player.coins} 🟡`;
     document.getElementById('shopCoinsDisplay').innerText = `${player.coins} 🟡`;
