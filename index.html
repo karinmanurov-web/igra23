@@ -261,8 +261,16 @@
   let hoveredExit = null;
 
   // --- СЕТЕВАЯ ЧАСТЬ (МУЛЬТИПЛЕЕР) ---
-  const socket = io(); // Автоматически подключается к хосту сервера
-  let otherPlayers = {}; // Здесь будут храниться все другие игроки онлайн
+  const socket = io(); 
+  let otherPlayers = {}; 
+
+  // Функция для отправки нашей внешности на сервер (Этап 1)
+  function emitAppearance() {
+    socket.emit('playerAppearance', {
+      color: player.color,
+      equipped: player.equipped
+    });
+  }
 
   // Получаем список игроков, которые зашли раньше нас
   socket.on('currentPlayers', (players) => {
@@ -273,6 +281,8 @@
         player.name = players[id].name;
       }
     });
+    // При старте синхронизируем нашу внешность со всеми (на всякий случай)
+    emitAppearance();
   });
 
   socket.on('newPlayer', (playerInfo) => { otherPlayers[playerInfo.id] = playerInfo; });
@@ -293,6 +303,14 @@
       otherPlayers[playerInfo.id].targetX = playerInfo.targetX;
       otherPlayers[playerInfo.id].targetY = playerInfo.targetY;
       otherPlayers[playerInfo.id].currentLocation = playerInfo.currentLocation;
+    }
+  });
+
+  // Событие: кто-то изменил цвет или надел вещь (Этап 1)
+  socket.on('playerAppearanceChanged', (data) => {
+    if (otherPlayers[data.id]) {
+      otherPlayers[data.id].color = data.color;
+      otherPlayers[data.id].equipped = data.equipped;
     }
   });
 
@@ -372,7 +390,6 @@
     watermelon: { id: 'watermelon', name: 'Арбуз', icon: '🍉', price: 15, xp: 25, loc: 'beach' }
   };
 
-  // --- NPC STATE ---
   const npc = {
     x: 300, y: 350, targetX: 300, targetY: 350, speed: 2, radius: 26, color: '#f59e0b', name: 'Кот_Барсик',
     speechBubble: { text: 'Привет!', timer: 180 }, equipped: { hat: 'crown', accessory: null }
@@ -624,7 +641,13 @@
     if(id === 'minigameModal') startMinigame();
   }
   function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-  function changeColor(hex) { player.color = hex; }
+  
+  // Обновлено в рамках Этапа 1
+  function changeColor(hex) { 
+    player.color = hex; 
+    emitAppearance(); // Синхронизируем цвет
+  }
+  
   function changeHomeColor(type, hex) { player.homeColors[type] = hex; }
   function updateCoinsDisplay() {
     document.getElementById('profileCoinsDisplay').innerText = `${player.coins} 🟡`;
@@ -796,11 +819,13 @@
     document.getElementById('floorCustomBlock').style.display = hasCustomFloor ? 'block' : 'none';
   }
 
+  // Обновлено в рамках Этапа 1
   function toggleEquip(itemId, category) {
     if (category === 'clothing') {
       const item = itemsDB[itemId];
       player.equipped[item.type] = (player.equipped[item.type] === itemId) ? null : itemId;
       renderInventory();
+      emitAppearance(); // Синхронизируем шапку/очки
     } else {
       const item = furnitureDB[itemId];
       player.equippedFurniture[item.type] = (player.equippedFurniture[item.type] === itemId) ? null : itemId;
@@ -1391,6 +1416,7 @@
     ctx.fillStyle = char.color; ctx.beginPath(); ctx.arc(char.x - 16, char.y - 20, 10, 0, Math.PI * 2); ctx.arc(char.x + 16, char.y - 20, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(char.x - 8, char.y - 4, 4, 0, Math.PI * 2); ctx.arc(char.x + 8, char.y - 4, 4, 0, Math.PI * 2); ctx.fill();
 
+    // Отрисовка экипировки (Теперь работает и для других игроков!)
     if (char.equipped && char.equipped.accessory) {
       const accId = char.equipped.accessory;
       if (accId === 'glasses_cool') { ctx.fillStyle = '#1e293b'; ctx.fillRect(char.x - 14, char.y - 8, 12, 8); ctx.fillRect(char.x + 2, char.y - 8, 12, 8); ctx.fillRect(char.x - 2, char.y - 6, 4, 3); } 
