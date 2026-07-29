@@ -231,6 +231,18 @@
     </div>
   </div>
 
+<!-- MODAL: Входящая заявка в друзья -->
+  <div class="modal-overlay" id="friendRequestModal" style="z-index: 1000;">
+    <div class="modal-card" style="width: 350px; text-align: center;">
+      <div class="modal-title">Новая заявка! 💌</div>
+      <p id="friendReqText" style="color:#cbd5e1; margin-bottom: 20px; font-size: 16px;"></p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+          <button class="buy-btn" style="background: #10b981; font-size: 15px; padding: 10px 20px;" onclick="answerFriendReq(true)">Принять</button>
+          <button class="buy-btn" style="background: #ef4444; font-size: 15px; padding: 10px 20px;" onclick="answerFriendReq(false)">Отказать</button>
+      </div>
+    </div>
+  </div>
+  
   <!-- MODAL: Map -->
   <div class="modal-overlay" id="mapModal">
     <div class="modal-card" style="width: 550px;">
@@ -301,6 +313,38 @@
   // --- СЕТЕВАЯ ЧАСТЬ (МУЛЬТИПЛЕЕР) ---
   const socket = io(); // Автоматически подключается к хосту сервера
   let otherPlayers = {}; // Здесь будут храниться все другие игроки онлайн
+  let currentHouse = null;
+  let pendingFriendReq = null;
+
+  socket.on('playerLeftRoom', (id) => {
+    delete otherPlayers[id];
+  });
+
+  socket.on('loadHouse', (houseData) => {
+    currentHouse = houseData; // Получили с сервера чужой дом!
+  });
+
+  socket.on('friendRequest', (senderName) => {
+    pendingFriendReq = senderName;
+    document.getElementById('friendReqText').innerText = `${senderName} хочет стать вашим другом!`;
+    document.getElementById('friendRequestModal').style.display = 'flex';
+  });
+
+  socket.on('friendAdded', (friendName) => {
+    if (!player.friends) player.friends = [];
+    if (!player.friends.includes(friendName)) player.friends.push(friendName);
+    player.speechBubble.text = `${friendName} теперь ваш друг! 🎉`;
+    player.speechBubble.timer = 200;
+    renderFriends(); // Перерисовываем список
+  });
+
+  function answerFriendReq(accepted) {
+    document.getElementById('friendRequestModal').style.display = 'none';
+    if (accepted && pendingFriendReq) {
+      socket.emit('acceptFriend', pendingFriendReq);
+    }
+    pendingFriendReq = null;
+  }
   let isLoggedIn = false; // Флаг авторизации
 
   // Функция для отправки нашей внешности на сервер (Этап 1)
@@ -1009,29 +1053,44 @@
 
   function forceTeleport(loc) { changeLocation(loc); }
 
-  function changeLocation(loc, fromLoc = null) {
-    currentLocation = loc; hoveredExit = null; closeModal('mapModal');
-    
-    const repairBtn = document.getElementById('repairBtn');
-    if (loc === 'home') {
-       repairBtn.style.display = 'block';
-    } else {
-       repairBtn.style.display = 'none';
-       if (isRepairMode) toggleRepairMode();
-    }
-
-    if (fromLoc && exitsData[loc]) {
-      const spawnExit = exitsData[loc].find(ex => ex.id === fromLoc);
-      if (spawnExit) {
-        player.x = spawnExit.x + spawnExit.w / 2; player.y = spawnExit.y + spawnExit.h / 2;
-        player.targetX = player.x; player.targetY = player.y >= 400 ? player.y - 60 : player.y + 60;
+  function changeLocation(loc, fromLoc = null, owner = null) {
+      currentLocation = loc; hoveredExit = null; closeModal('mapModal');
+      
+      // Определяем, чей это дом (наш или друга)
+      const homeOwner = loc === 'home' ? (owner || player.username) : null;
+  
+      if (loc === 'home' && homeOwner === player.username) {
+         // Грузим НАШУ мебель
+         currentHouse = {
+             equippedFurniture: player.equippedFurniture,
+             homeColors: player.homeColors,
+             furniturePos: player.furniturePos
+         };
+         document.getElementById('repairBtn').style.display = 'block'; // Ремонт доступен
+      } else {
+         currentHouse = null; // Ждем загрузки чужого дома
+         document.getElementById('repairBtn').style.display = 'none'; // В гостях ремонт запрещен!
+         if (isRepairMode) toggleRepairMode();
+      }
+  
+      // (оставляем старый код координат спавна...)
+      if (fromLoc && exitsData[loc]) {
+        const spawnExit = exitsData[loc].find(ex => ex.id === fromLoc);
+        if (spawnExit) {
+          player.x = spawnExit.x + spawnExit.w / 2; player.y = spawnExit.y + spawnExit.h / 2;
+          player.targetX = player.x; player.targetY = player.y >= 400 ? player.y - 60 : player.y + 60;
+        } else { player.x = 520; player.y = 400; player.targetX = 520; player.targetY = 400; }
       } else { player.x = 520; player.y = 400; player.targetX = 520; player.targetY = 400; }
-    } else { player.x = 520; player.y = 400; player.targetX = 520; player.targetY = 400; }
-    npc.x = 300; npc.y = 350; npc.targetX = 300; npc.targetY = 350;
-    
-    // ОТПРАВКА ТЕЛЕПОРТА НА СЕРВЕР
-    socket.emit('locationTeleport', { x: player.x, y: player.y, targetX: player.targetX, targetY: player.targetY, currentLocation: currentLocation });
-  }
+      npc.x = 300; npc.y = 350; npc.targetX = 300; npc.targetY = 350;
+      
+      // ОТПРАВЛЯЕМ ТЕЛЕПОРТ С УКАЗАНИЕМ ВЛАДЕЛЬЦА КОМНАТЫ
+      socket.emit('locationTeleport', { 
+        x: player.x, y: player.y, 
+        targetX: player.targetX, targetY: player.targetY, 
+        currentLocation: loc, 
+        homeOwner: homeOwner 
+      });
+    }
 
   function draw3DBox(x, y, w, h, d, cTop, cFront, cSide) {
     ctx.fillStyle = cFront; ctx.fillRect(x, y, w, h); 
