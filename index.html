@@ -1234,11 +1234,13 @@
 
     if (loc === 'home' && homeOwner === player.name) {
        // Грузим НАШУ мебель
-       currentHouse = null;
+       currentHouse = {
+           equippedFurniture: player.equippedFurniture,
+           homeColors: player.homeColors,
+           furniturePos: player.furniturePos
+       };
        document.getElementById('repairBtn').style.display = 'block'; 
     } else {
-       // Для чужого дома оставляем старое значение currentHouse до получения данных с сервера, но кнопку ремонта скрываем
-       // Хотя можно и очистить, чтобы не было мерцания
        currentHouse = null; 
        document.getElementById('repairBtn').style.display = 'none'; 
        if (isRepairMode) toggleRepairMode();
