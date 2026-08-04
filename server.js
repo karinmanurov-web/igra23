@@ -207,6 +207,130 @@ io.on('connection', (socket) => {
   });
 
   // 8. Игрок отключился
+
+  // --- GOMOKU (ARCHIVE) ---
+  let gomokuBoard = Array(10).fill().map(() => Array(10).fill(0));
+  let gomokuTurn = 1; // 1 or 2
+  let gomokuPlayers = [];
+
+  socket.on('gomokuMove', (data) => {
+    let p = onlinePlayers[socket.id];
+    if (!p || p.room !== 'archive') return;
+
+    let pIndex = gomokuPlayers.indexOf(p.name);
+    if (pIndex === -1) {
+       if (gomokuPlayers.length < 2) {
+          gomokuPlayers.push(p.name);
+          pIndex = gomokuPlayers.length - 1;
+       } else {
+          return; // game full
+       }
+    }
+
+    if (pIndex + 1 !== gomokuTurn) return; // not your turn
+
+    if (gomokuBoard[data.row] && gomokuBoard[data.row][data.col] === 0) {
+       gomokuBoard[data.row][data.col] = gomokuTurn;
+
+       // check win
+       let win = false;
+       let dr = [0, 1, 1, 1], dc = [1, 0, 1, -1];
+       for(let i=0; i<10; i++){
+          for(let j=0; j<10; j++){
+             if(gomokuBoard[i][j] === gomokuTurn){
+                for(let d=0; d<4; d++){
+                   let count = 1;
+                   for(let step=1; step<5; step++){
+                      let nr = i + dr[d]*step; let nc = j + dc[d]*step;
+                      if(nr>=0 && nr<10 && nc>=0 && nc<10 && gomokuBoard[nr][nc] === gomokuTurn) count++;
+                      else break;
+                   }
+                   if(count >= 5) win = true;
+                }
+             }
+          }
+       }
+
+       if (win) {
+          io.to('archive').emit('gomokuUpdate', gomokuBoard);
+          io.to('archive').emit('gomokuWin', p.name);
+          gomokuBoard = Array(10).fill().map(() => Array(10).fill(0));
+          gomokuPlayers = [];
+          gomokuTurn = 1;
+       } else {
+          gomokuTurn = gomokuTurn === 1 ? 2 : 1;
+          io.to('archive').emit('gomokuUpdate', gomokuBoard);
+       }
+    }
+  });
+
+  // 8. Игрок отключился
+
+  // --- GRAFFITI WALL ---
+  let graffitis = [];
+  let graffitiCooldown = {};
+
+  socket.on('placeGraffiti', (data) => {
+    let p = onlinePlayers[socket.id];
+    if (!p) return;
+
+    let now = Date.now();
+    if (graffitiCooldown[p.name] && now - graffitiCooldown[p.name] < 5 * 60 * 1000) {
+       socket.emit('graffitiError', 'Жди 5 минут перед следующим тэгом!');
+       return;
+    }
+
+    graffitiCooldown[p.name] = now;
+
+    // Remove old graffiti from this player
+    graffitis = graffitis.filter(g => g.owner !== p.name);
+
+    graffitis.push({
+       owner: p.name,
+       text: data.text,
+       x: data.x,
+       y: data.y,
+       color: p.color,
+       room: p.room
+    });
+
+    io.emit('graffitiUpdate', graffitis);
+  });
+
+  // 8. Игрок отключился
+
+  // --- SCAVENGER HUNT ---
+  let collectibles = [
+    { id: 1, x: 800, y: 100, room: 'square' },
+    { id: 2, x: 200, y: 200, room: 'park' },
+    { id: 3, x: 900, y: 500, room: 'beach' },
+    { id: 4, x: 100, y: 400, room: 'cafe' },
+    { id: 5, x: 800, y: 200, room: 'archive' }
+  ];
+
+  socket.on('collectItem', (itemId) => {
+    let p = onlinePlayers[socket.id];
+    if (!p) return;
+
+    if (!p.collectedItems) p.collectedItems = [];
+    if (!p.collectedItems.includes(itemId)) {
+       p.collectedItems.push(itemId);
+
+       let count = p.collectedItems.length;
+       socket.emit('collectedInfo', { count: count });
+
+       // Note: in a real game we should update DB XP here. We'll update memory state.
+       // The client will sync it.
+       socket.emit('loginSuccess', { playerData: { coins: count*10 } }); // hack to just show something or we rely on client sync
+
+       if (count === 5) {
+          p.hasAura = true;
+          io.emit('playerAura', { id: socket.id, hasAura: true });
+       }
+    }
+  });
+
+  // 8. Игрок отключился
   socket.on('disconnect', () => {
     console.log(`Игрок отключился: ${socket.id}`);
     delete onlinePlayers[socket.id];
