@@ -706,6 +706,32 @@
 
   // --- ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМА РЕМОНТА ---
 
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'e' || e.key === 'E') {
+      if (currentLocation === 'cafe') {
+        let dist = Math.sqrt(Math.pow(player.x - 520, 2) + Math.pow(player.y - 340, 2));
+        if (dist < 80) {
+           isResting = true;
+           player.targetX = player.x; player.targetY = player.y;
+           socket.emit('startResting');
+        }
+      }
+    }
+    if (isResting && (e.key === 'w' || e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+       cancelRest();
+    }
+  });
+
+  function cancelRest() {
+    if (isResting) {
+       isResting = false;
+       speedBuffTimer = 60 * 60; // 60 seconds at 60 fps
+       player.speed = 4.5 * 1.15;
+       socket.emit('stopResting');
+    }
+  }
+
   let isResting = false;
   let restTimer = 0;
   let speedBuffTimer = 0;
@@ -838,7 +864,11 @@
   canvas.addEventListener('click', (e) => {
     if (!isLoggedIn || isRepairMode) return;
 
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
+    if (isResting) cancelRest();
 
     // Scavenger hunt click
     for (let i=0; i<collectibles.length; i++) {
@@ -886,10 +916,6 @@
        }
     }
 
-
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left; 
-    const my = e.clientY - rect.top;
 
     closePlayerAction();
 
