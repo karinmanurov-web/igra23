@@ -139,18 +139,21 @@ io.on('connection', (socket) => {
       // Заходим в новую комнату
       socket.join(newRoom);
 
-      // Если это дом, грузим мебель владельца из БД!
-      if (data.currentLocation === 'home' && data.homeOwner) {
+
+      // Если это дом и это дом ДРУГОГО игрока, грузим мебель владельца из БД!
+      if (data.currentLocation === 'home' && data.homeOwner && data.homeOwner !== p.name) {
         // Подключаемся к коллекции users
         const houseOwner = await db.collection('users').findOne({ username: data.homeOwner });
         if (houseOwner) {
           socket.emit('loadHouse', {
+            username: houseOwner.username,
             equippedFurniture: houseOwner.equippedFurniture,
             homeColors: houseOwner.homeColors,
             furniturePos: houseOwner.furniturePos
           });
         }
       }
+
 
       // Показываем нас новым соседям по комнате
       socket.broadcast.to(newRoom).emit('newPlayer', p);
@@ -184,9 +187,9 @@ io.on('connection', (socket) => {
 
   // --- СИСТЕМА ДРУЗЕЙ ---
   socket.on('sendFriendRequest', (targetUsername) => {
-    const target = Object.values(onlinePlayers).find(p => p.username === targetUsername);
+    const target = Object.values(onlinePlayers).find(p => p.name === targetUsername);
     if (target) {
-      io.to(target.id).emit('friendRequest', onlinePlayers[socket.id].username); // Отправляем запрос
+      io.to(target.id).emit('friendRequest', onlinePlayers[socket.id].name); // Отправляем запрос
     }
   });
 
@@ -195,14 +198,14 @@ io.on('connection', (socket) => {
     if(!p) return;
     
     // Добавляем в БД обоим игрокам (убедитесь, что переменная db у вас объявлена)
-    await db.collection('users').updateOne({username: p.username}, {$addToSet: {friends: requesterUsername}});
-    await db.collection('users').updateOne({username: requesterUsername}, {$addToSet: {friends: p.username}});
+    await db.collection('users').updateOne({username: p.name}, {$addToSet: {friends: requesterUsername}});
+    await db.collection('users').updateOne({username: requesterUsername}, {$addToSet: {friends: p.name}});
 
     // Уведомляем обоих
     socket.emit('friendAdded', requesterUsername);
-    const reqPlayer = Object.values(onlinePlayers).find(pl => pl.username === requesterUsername);
+    const reqPlayer = Object.values(onlinePlayers).find(pl => pl.name === requesterUsername);
     if (reqPlayer) {
-      io.to(reqPlayer.id).emit('friendAdded', p.username);
+      io.to(reqPlayer.id).emit('friendAdded', p.name);
     }
   });
 
