@@ -525,6 +525,37 @@
     // In a full implementation we'd start a specific UI here
   });
 
+
+  const grCanvas = document.getElementById('graffitiCanvas');
+  const grCtx = grCanvas.getContext('2d');
+  let isDrawing = false;
+
+  grCanvas.addEventListener('mousedown', () => isDrawing = true);
+  grCanvas.addEventListener('mouseup', () => { isDrawing = false; grCtx.beginPath(); });
+  grCanvas.addEventListener('mousemove', (e) => {
+    if(!isDrawing) return;
+    grCtx.lineWidth = document.getElementById('graffitiSize').value;
+    grCtx.lineCap = 'round';
+    grCtx.strokeStyle = document.getElementById('graffitiColor').value;
+
+    let rect = grCanvas.getBoundingClientRect();
+    grCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    grCtx.stroke();
+    grCtx.beginPath();
+    grCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  function submitGraffiti() {
+    let dataUrl = grCanvas.toDataURL();
+    // randomly place on the front face of the cube (x:490..510, y:320..360)
+    let rx = 480 + Math.random() * 30;
+    let ry = 310 + Math.random() * 40;
+    socket.emit('placeGraffiti', { dataUrl: dataUrl, x: rx, y: ry, w: 100, h: 60 });
+    closeModal('graffitiModal');
+    // clear canvas for next time
+    grCtx.clearRect(0, 0, grCanvas.width, grCanvas.height);
+  }
+
   let pendingFriendReq = null;
 
   socket.on('loadHouse', (houseData) => {
@@ -898,7 +929,8 @@
 
     // Graffiti click
     if (currentLocation === 'square') {
-       if (mx >= 250 && mx <= 450 && my >= 200 && my <= 450) {
+       // Big grey cube: front is x:490-550, y:320-400
+       if (mx >= 460 && mx <= 580 && my >= 290 && my <= 420) {
           openModal('graffitiModal');
           return;
        }
@@ -906,7 +938,8 @@
 
     // Secret Archive unlock on Square
     if (currentLocation === 'square') {
-       if (mx > 100 && mx < 150 && my > 100 && my < 150) { // Top left corner click
+       // Sun is drawn at 520, 230 with radius 25
+       if (Math.hypot(mx - 520, my - 230) < 30) {
           secretClicks++;
           if (secretClicks === 3) {
              player.speechBubble.text = 'Ты нашел вход в Тайный Архив!';
