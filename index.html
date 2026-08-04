@@ -259,20 +259,7 @@
     </div>
   </div>
 
-
-  <!-- MODAL: 1v1 Invite -->
-  <div class="modal-overlay" id="pvpModal" style="z-index: 1000;">
-    <div class="modal-card" style="width: 350px; text-align: center;">
-      <div class="modal-title">Вызов на мини-игру! ⚔️</div>
-      <p id="pvpText" style="color:#cbd5e1; margin-bottom: 20px; font-size: 16px;"></p>
-      <div style="display: flex; gap: 10px; justify-content: center;">
-          <button class="buy-btn" style="background: #10b981;" onclick="answerPvp(true)">Играть</button>
-          <button class="buy-btn" style="background: #ef4444;" onclick="answerPvp(false)">Отказать</button>
-      </div>
-    </div>
-  </div>
-
-<!-- MODAL: Входящая заявка в друзья -->
+  <!-- MODAL: Входящая заявка в друзья -->
   <div class="modal-overlay" id="friendRequestModal" style="z-index: 1000;">
     <div class="modal-card" style="width: 350px; text-align: center;">
       <div class="modal-title">Новая заявка! 💌</div>
@@ -316,15 +303,7 @@
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
 
-  let currentLocation = 'square';
-
-  let timeCycle = 'day';
-  let crystals = {};
-  let dominator = null;
-  let domPlayersCoords = [];
-  let graffitis = [];
-  let collectibles = []; // received from server if someone dominates?
- // По умолчанию теперь спавн на площади
+  let currentLocation = 'square'; // По умолчанию теперь спавн на площади
   let currentHouse = null; // Для хранения чужого дома, если мы в гостях
 
   // --- ARROW EXITS (IN-WORLD NAVIGATION) ---
@@ -346,9 +325,6 @@
     ],
     cafe: [{ id: 'square', text: '⬅️ На площадь', x: 20, y: 280, w: 160, h: 50 }],
     shop: [{ id: 'square', text: '⬅️ На площадь', x: 20, y: 280, w: 160, h: 50 }],
-    archive: [
-      { id: 'square', text: '⬅️ На площадь', x: 520, y: 550, w: 160, h: 50 }
-    ],
     hospital: [{ id: 'square', text: '⬆️ На площадь', x: 440, y: 200, w: 160, h: 50 }]
   };
   let hoveredExit = null;
@@ -381,72 +357,6 @@
     otherPlayers[playerInfo.id] = { ...playerInfo, radius: 26, speed: 4.5 }; 
   });
   
-
-  socket.on('worldState', (state) => {
-    timeCycle = state.timeCycle;
-    crystals = state.crystals;
-    dominator = state.dominator;
-  });
-
-  socket.on('timeUpdate', (data) => {
-    timeCycle = data.cycle;
-    player.speechBubble.text = timeCycle === 'night' ? 'Наступила ночь...' : 'Время суток изменилось!';
-    player.speechBubble.timer = 150;
-  });
-
-  socket.on('crystalUpdate', (data) => {
-    crystals = data.crystals;
-    dominator = data.dominator;
-  });
-
-
-
-  socket.on('collectiblesUpdate', (data) => {
-    collectibles = data;
-  });
-  socket.on('collectedInfo', (data) => {
-    player.speechBubble.text = `Найдено реликвий: ${data.count}/5 !`;
-    player.speechBubble.timer = 150;
-    if (data.count === 5) {
-       setTimeout(() => {
-          player.speechBubble.text = 'Ты собрал все реликвии! +100 монет и Аура!';
-          player.speechBubble.timer = 300;
-       }, 3000);
-    }
-  });
-
-  socket.on('playerAura', (data) => {
-    if (players[data.id]) {
-       players[data.id].hasAura = data.hasAura;
-    }
-    if (player.id === data.id) {
-       player.hasAura = data.hasAura;
-    }
-  });
-
-  socket.on('graffitiUpdate', (data) => {
-    graffitis = data;
-  });
-  socket.on('graffitiError', (msg) => {
-    player.speechBubble.text = msg;
-    player.speechBubble.timer = 150;
-  });
-
-  socket.on('dominationEvent', (domName) => {
-    player.speechBubble.text = `${domName} захватил все кристаллы!`;
-    player.speechBubble.timer = 300;
-  });
-
-
-  socket.on('gomokuUpdate', (board) => {
-    gomokuBoard = board;
-  });
-  socket.on('gomokuWin', (winnerName) => {
-    player.speechBubble.text = `В гомоку победил: ${winnerName}!`;
-    player.speechBubble.timer = 300;
-    gomokuBoard = Array(10).fill().map(() => Array(10).fill(0));
-  });
-
   socket.on('playerDisconnected', (id) => { delete otherPlayers[id]; });
   socket.on('playerLeftRoom', (id) => { delete otherPlayers[id]; });
 
@@ -489,27 +399,6 @@
   });
 
   // --- ЛОГИКА ДРУЗЕЙ, ЗАЯВОК И ГОСТЕЙ ---
-
-  let pendingPvpReq = null;
-  socket.on('pvpRequest', (senderName) => {
-    pendingPvpReq = senderName;
-    document.getElementById('pvpText').innerText = `${senderName} предлагает дуэль за столиком!`;
-    document.getElementById('pvpModal').style.display = 'flex';
-  });
-
-  function answerPvp(accepted) {
-    document.getElementById('pvpModal').style.display = 'none';
-    if (accepted && pendingPvpReq) {
-      socket.emit('acceptPvp', pendingPvpReq);
-    }
-    pendingPvpReq = null;
-  }
-  socket.on('pvpStart', () => {
-    player.speechBubble.text = 'ДУЭЛЬ НАЧАЛАСЬ!';
-    player.speechBubble.timer = 200;
-    // In a full implementation we'd start a specific UI here
-  });
-
   let pendingFriendReq = null;
 
   socket.on('loadHouse', (houseData) => {
@@ -705,41 +594,6 @@
   setTimeout(() => showChat(4000), 100);
 
   // --- ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМА РЕМОНТА ---
-
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'e' || e.key === 'E') {
-      if (currentLocation === 'cafe') {
-        let dist = Math.sqrt(Math.pow(player.x - 520, 2) + Math.pow(player.y - 340, 2));
-        if (dist < 80) {
-           isResting = true;
-           player.targetX = player.x; player.targetY = player.y;
-           socket.emit('startResting');
-        }
-      }
-    }
-    if (isResting && (e.key === 'w' || e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-       cancelRest();
-    }
-  });
-
-  function cancelRest() {
-    if (isResting) {
-       isResting = false;
-       speedBuffTimer = 60 * 60; // 60 seconds at 60 fps
-       player.speed = 4.5 * 1.15;
-       socket.emit('stopResting');
-    }
-  }
-
-  let isResting = false;
-  let restTimer = 0;
-  let speedBuffTimer = 0;
-
-
-  let secretClicks = 0;
-  let gomokuBoard = Array(10).fill().map(() => Array(10).fill(0));
-
   let isRepairMode = false;
   let draggedFurniture = null;
   let dragOffsetX = 0;
@@ -915,7 +769,6 @@
           return;
        }
     }
-
 
     closePlayerAction();
 
@@ -1260,11 +1113,13 @@
 
     if (loc === 'home' && homeOwner === player.name) {
        // Грузим НАШУ мебель
-       currentHouse = null;
+       currentHouse = {
+           equippedFurniture: player.equippedFurniture,
+           homeColors: player.homeColors,
+           furniturePos: player.furniturePos
+       };
        document.getElementById('repairBtn').style.display = 'block'; 
     } else {
-       // Для чужого дома оставляем старое значение currentHouse до получения данных с сервера, но кнопку ремонта скрываем
-       // Хотя можно и очистить, чтобы не было мерцания
        currentHouse = null; 
        document.getElementById('repairBtn').style.display = 'none'; 
        if (isRepairMode) toggleRepairMode();
@@ -1760,38 +1615,6 @@
       let homeTitleText = currentHouse ? `🏠 Дом игрока ${currentHouse.username || 'Друга'}` : '🏠 МОЙ ДОМ';
       ctx.fillText(homeTitleText, 520, 30);
     } 
-
-    else if (currentLocation === 'archive') {
-      ctx.fillStyle = '#1e1b4b'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
-      for(let x=0; x<canvas.width; x+=60) {
-        ctx.fillStyle = '#312e81'; ctx.fillRect(x, 180, 50, 400); // Bookshelves
-        for(let by=200; by<550; by+=50) {
-           ctx.fillStyle = Math.random() > 0.5 ? '#8b5cf6' : '#ec4899';
-           ctx.fillRect(x+10, by, 30, 40);
-        }
-      }
-      ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('📚 ТАЙНЫЙ АРХИВ', 520, 30);
-
-      // Gomoku Board
-      ctx.fillStyle = '#d4d4d8'; ctx.fillRect(400, 250, 240, 240);
-      ctx.fillStyle = '#000'; ctx.font = '16px sans-serif'; ctx.fillText('Крестики-Нолики 5вРяд', 520, 240);
-      // Draw grid
-      ctx.strokeStyle = '#a1a1aa'; ctx.lineWidth = 1;
-      for (let i=0; i<=10; i++) {
-         ctx.beginPath(); ctx.moveTo(400 + i*24, 250); ctx.lineTo(400 + i*24, 490); ctx.stroke();
-         ctx.beginPath(); ctx.moveTo(400, 250 + i*24); ctx.lineTo(640, 250 + i*24); ctx.stroke();
-      }
-      // Draw pieces
-      for (let i=0; i<gomokuBoard.length; i++) {
-         for (let j=0; j<gomokuBoard[i].length; j++) {
-            if (gomokuBoard[i][j]) {
-               ctx.fillStyle = gomokuBoard[i][j] === 1 ? '#000' : '#fff';
-               ctx.beginPath(); ctx.arc(400 + j*24 + 12, 250 + i*24 + 12, 10, 0, Math.PI*2); ctx.fill();
-            }
-         }
-      }
-    }
-
     else if (currentLocation === 'hospital') {
       ctx.fillStyle = '#f0fdf4'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
       ctx.strokeStyle = '#dcfce7'; ctx.lineWidth = 2;
@@ -1875,14 +1698,7 @@
     }
 
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(char.x, char.y + char.radius - 2, char.radius * 0.9, char.radius * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = char.color;
-    if (char.hasAura) {
-       ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 3; ctx.setLineDash([5, 5]);
-       ctx.beginPath(); ctx.arc(char.x, char.y, char.radius + 10, 0, Math.PI*2); ctx.stroke();
-       ctx.setLineDash([]);
-    }
-
-    ctx.beginPath(); ctx.arc(char.x, char.y, char.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = char.color; ctx.beginPath(); ctx.arc(char.x, char.y, char.radius, 0, Math.PI * 2); ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
     ctx.fillStyle = char.color; ctx.beginPath(); ctx.arc(char.x - 16, char.y - 20, 10, 0, Math.PI * 2); ctx.arc(char.x + 16, char.y - 20, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(char.x - 8, char.y - 4, 4, 0, Math.PI * 2); ctx.arc(char.x + 8, char.y - 4, 4, 0, Math.PI * 2); ctx.fill();
@@ -1929,59 +1745,6 @@
       drawCharacter(p); 
     });
     drawCharacter(player);
-
-  if (isResting) {
-     ctx.fillStyle = '#fde047'; ctx.font = '20px sans-serif';
-     ctx.fillText('Zzz...', player.x, player.y - 80 - (Math.sin(Date.now()/200)*5));
-  }
-  if (speedBuffTimer > 0) {
-     speedBuffTimer--;
-     if (speedBuffTimer <= 0) {
-        player.speed = 4.5;
-     } else {
-        // Aura
-        ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(player.x, player.y + 20, 30, 0, Math.PI*2); ctx.stroke();
-     }
-  }
-
-
-    // Day/Night filter
-    if (timeCycle !== 'day') {
-      ctx.fillStyle = timeCycle === 'night' ? 'rgba(0, 0, 50, 0.6)' :
-                      (timeCycle === 'sunset' ? 'rgba(200, 100, 0, 0.3)' : 'rgba(255, 200, 150, 0.2)');
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // If night, draw simple lights near players and crystals
-      if (timeCycle === 'night') {
-        let drawLight = (lx, ly, lr) => {
-          let grd = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
-          grd.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
-          grd.addColorStop(1, 'rgba(255, 255, 200, 0)');
-          ctx.fillStyle = grd;
-          ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI*2); ctx.fill();
-        };
-        drawLight(player.x, player.y, 100);
-        for(let id in players) {
-          drawLight(players[id].x, players[id].y, 100);
-        }
-      }
-    }
-
-    // Domination minimap info
-    if (dominator && dominator !== player.name) {
-       ctx.fillStyle = 'red'; ctx.font = '14px sans-serif';
-       ctx.fillText(`Доминатор: ${dominator} видит всех!`, 520, 80);
-    } else if (dominator === player.name) {
-       ctx.fillStyle = 'lime'; ctx.font = '14px sans-serif';
-       ctx.fillText('ВЫ ДОМИНИРУЕТЕ! Вы видите координаты всех:', 520, 80);
-       let domY = 100;
-       for (let id in players) {
-         ctx.fillText(`${players[id].name}: [${players[id].room}]`, 520, domY);
-         domY += 20;
-       }
-    }
-
     requestAnimationFrame(gameLoop);
   }
   gameLoop();
@@ -1996,38 +1759,6 @@
     else if (currentLocation === 'cafe') { minigameType = 'croissants'; titleEl.innerText = 'Лови Круассаны 🥐'; descEl.innerText = 'Успевай ловить выпечку!'; openModal('minigameModal'); } 
     else if (currentLocation === 'beach') { minigameType = 'timing'; titleEl.innerText = 'Волейбол 🏐'; descEl.innerText = 'Кликай, когда ползунок в ЗЕЛЕНОЙ зоне!'; openModal('minigameModal'); } 
     else if (currentLocation === 'home') { minigameType = 'cleanup'; titleEl.innerText = 'Уборка Дома 🧹'; descEl.innerText = 'Кликай по разбросанным вещам!'; openModal('minigameModal'); } 
-
-    else if (currentLocation === 'archive') {
-      ctx.fillStyle = '#1e1b4b'; ctx.fillRect(0, 180, canvas.width, canvas.height - 180);
-      for(let x=0; x<canvas.width; x+=60) {
-        ctx.fillStyle = '#312e81'; ctx.fillRect(x, 180, 50, 400); // Bookshelves
-        for(let by=200; by<550; by+=50) {
-           ctx.fillStyle = Math.random() > 0.5 ? '#8b5cf6' : '#ec4899';
-           ctx.fillRect(x+10, by, 30, 40);
-        }
-      }
-      ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('📚 ТАЙНЫЙ АРХИВ', 520, 30);
-
-      // Gomoku Board
-      ctx.fillStyle = '#d4d4d8'; ctx.fillRect(400, 250, 240, 240);
-      ctx.fillStyle = '#000'; ctx.font = '16px sans-serif'; ctx.fillText('Крестики-Нолики 5вРяд', 520, 240);
-      // Draw grid
-      ctx.strokeStyle = '#a1a1aa'; ctx.lineWidth = 1;
-      for (let i=0; i<=10; i++) {
-         ctx.beginPath(); ctx.moveTo(400 + i*24, 250); ctx.lineTo(400 + i*24, 490); ctx.stroke();
-         ctx.beginPath(); ctx.moveTo(400, 250 + i*24); ctx.lineTo(640, 250 + i*24); ctx.stroke();
-      }
-      // Draw pieces
-      for (let i=0; i<gomokuBoard.length; i++) {
-         for (let j=0; j<gomokuBoard[i].length; j++) {
-            if (gomokuBoard[i][j]) {
-               ctx.fillStyle = gomokuBoard[i][j] === 1 ? '#000' : '#fff';
-               ctx.beginPath(); ctx.arc(400 + j*24 + 12, 250 + i*24 + 12, 10, 0, Math.PI*2); ctx.fill();
-            }
-         }
-      }
-    }
-
     else if (currentLocation === 'hospital') { minigameType = 'virus'; titleEl.innerText = 'Бей Вирусы 🦠'; descEl.innerText = 'Быстро кликай по вирусам!'; openModal('minigameModal'); } 
     else { player.speechBubble.text = 'Здесь нет мини-игр! Пойду в другое место.'; player.speechBubble.timer = 150; }
   }
