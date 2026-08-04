@@ -259,7 +259,22 @@
     </div>
   </div>
 
-  <!-- MODAL: Входящая заявка в друзья -->
+
+  <!-- MODAL: Graffiti -->
+  <div class="modal-overlay" id="graffitiModal" style="z-index: 1000;">
+    <div class="modal-card" style="width: 400px; text-align: center;">
+      <span class="close-btn" onclick="closeModal('graffitiModal')">&times;</span>
+      <div class="modal-title">Нарисовать Граффити</div>
+      <canvas id="graffitiCanvas" width="300" height="200" style="background: #cbd5e1; cursor: crosshair; border: 2px solid #3b82f6;"></canvas>
+      <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+          <input type="color" id="graffitiColor" value="#ef4444">
+          <input type="range" id="graffitiSize" min="1" max="10" value="3">
+          <button class="buy-btn" style="background: #10b981;" onclick="submitGraffiti()">Разместить</button>
+      </div>
+    </div>
+  </div>
+
+<!-- MODAL: Входящая заявка в друзья -->
   <div class="modal-overlay" id="friendRequestModal" style="z-index: 1000;">
     <div class="modal-card" style="width: 350px; text-align: center;">
       <div class="modal-title">Новая заявка! 💌</div>
@@ -737,11 +752,8 @@
 
     // Graffiti click
     if (currentLocation === 'square') {
-       if (mx >= 200 && mx <= 600 && my >= 50 && my <= 150) {
-          let emoji = prompt("Введите смайлик или короткое слово для граффити (до 5 символов):");
-          if (emoji) {
-             socket.emit('placeGraffiti', { text: emoji.substring(0, 5), x: mx, y: my });
-          }
+       if (mx >= 250 && mx <= 450 && my >= 200 && my <= 450) {
+          openModal('graffitiModal');
           return;
        }
     }
