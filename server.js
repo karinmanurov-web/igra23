@@ -25,7 +25,101 @@ MongoClient.connect(MONGO_URI)
 // Указываем серверу раздавать файлы из папки, где лежит игра
 app.use(express.static(path.join(__dirname, './')));
 
+
+// --- WORLD STATE ---
+let worldState = {
+  timeCycle: 'day', // 'day', 'sunset', 'night', 'sunrise'
+  timeTicks: 0,
+  crystals: {
+    crystal_1: { owner: null, beingCapturedBy: null, captureProgress: 0, x: 200, y: 500, radius: 40, room: 'square' },
+    crystal_2: { owner: null, beingCapturedBy: null, captureProgress: 0, x: 800, y: 150, radius: 40, room: 'park' },
+    crystal_3: { owner: null, beingCapturedBy: null, captureProgress: 0, x: 520, y: 450, radius: 40, room: 'beach' }
+  },
+  dominator: null
+};
+
+// 60 minutes = 3600 seconds
+// Let's tick every 1 second
+// Day: 35m (2100s)
+// Sunset: 10m (600s)
+// Night: 15m (900s)
+// Sunrise: (Let's make Sunset/Sunrise 5m each to equal 60m total, or 10m sunset + 15m night = 60m. 35+10+15 = 60. Wait, sunrise? Let's do Day 30m, Sunset 10m, Night 10m, Sunrise 10m = 60m. Prompt: "35m Day, 10m Sunset/Sunrise, 15m Night" -> maybe Sunset 5m, Sunrise 5m? Let's say Sunset=5m, Sunrise=5m)
+
+setInterval(() => {
+  worldState.timeTicks = (worldState.timeTicks + 1) % 3600;
+
+  const oldCycle = worldState.timeCycle;
+  if (worldState.timeTicks < 2100) worldState.timeCycle = 'day';
+  else if (worldState.timeTicks < 2400) worldState.timeCycle = 'sunset';
+  else if (worldState.timeTicks < 3300) worldState.timeCycle = 'night';
+  else worldState.timeCycle = 'sunrise';
+
+  if (oldCycle !== worldState.timeCycle) {
+    io.emit('timeUpdate', { cycle: worldState.timeCycle });
+  }
+
+  // Crystal capture logic
+  let needsCrystalUpdate = false;
+  for (let key in worldState.crystals) {
+    let c = worldState.crystals[key];
+
+    // Find player in radius
+    let playersInRadius = Object.values(onlinePlayers).filter(p => {
+      if (p.room !== c.room) return false;
+      let dx = p.x - c.x; let dy = p.y - c.y;
+      return Math.sqrt(dx*dx + dy*dy) < c.radius;
+    });
+
+    if (playersInRadius.length === 1) {
+      let p = playersInRadius[0];
+      if (c.beingCapturedBy !== p.name) {
+         c.beingCapturedBy = p.name;
+         c.captureProgress = 0;
+         needsCrystalUpdate = true;
+      } else {
+         c.captureProgress += 1; // 1 second
+         if (c.captureProgress >= 3 && c.owner !== p.color) {
+            c.owner = p.color; // Capturing assigns color
+            c.ownerName = p.name;
+            c.beingCapturedBy = null;
+            needsCrystalUpdate = true;
+         }
+      }
+    } else {
+      if (c.captureProgress > 0 || c.beingCapturedBy) {
+        c.captureProgress = 0;
+        c.beingCapturedBy = null;
+        needsCrystalUpdate = true;
+      }
+    }
+  }
+
+  if (needsCrystalUpdate) {
+    // Check domination
+    let owners = new Set();
+    let hasNull = false;
+    for (let key in worldState.crystals) {
+      if (!worldState.crystals[key].ownerName) hasNull = true;
+      else owners.add(worldState.crystals[key].ownerName);
+    }
+
+    let oldDominator = worldState.dominator;
+    if (!hasNull && owners.size === 1) {
+      worldState.dominator = Array.from(owners)[0];
+    } else {
+      worldState.dominator = null;
+    }
+
+    io.emit('crystalUpdate', { crystals: worldState.crystals, dominator: worldState.dominator });
+
+    if (worldState.dominator && worldState.dominator !== oldDominator) {
+      io.emit('dominationEvent', worldState.dominator);
+    }
+  }
+}, 1000);
+
 // Хранилище для активных игроков на сервере
+
 let onlinePlayers = {};
 
 io.on('connection', (socket) => {
@@ -88,9 +182,14 @@ io.on('connection', (socket) => {
         radius: 26, speed: 4.5
     };
 
+
     socket.emit('loginSuccess', { playerData: user });
     socket.emit('currentPlayers', onlinePlayers);
+    socket.emit('worldState', { timeCycle: worldState.timeCycle, crystals: worldState.crystals, dominator: worldState.dominator });
+    socket.emit('graffitiUpdate', graffitis);
+    socket.emit('collectiblesUpdate', collectibles);
     socket.broadcast.emit('newPlayer', onlinePlayers[socket.id]);
+
   });
 
   // Сохранение прогресса в БД
@@ -139,18 +238,21 @@ io.on('connection', (socket) => {
       // Заходим в новую комнату
       socket.join(newRoom);
 
-      // Если это дом, грузим мебель владельца из БД!
-      if (data.currentLocation === 'home' && data.homeOwner) {
+
+      // Если это дом и это дом ДРУГОГО игрока, грузим мебель владельца из БД!
+      if (data.currentLocation === 'home' && data.homeOwner && data.homeOwner !== p.name) {
         // Подключаемся к коллекции users
         const houseOwner = await db.collection('users').findOne({ username: data.homeOwner });
         if (houseOwner) {
           socket.emit('loadHouse', {
+            username: houseOwner.username,
             equippedFurniture: houseOwner.equippedFurniture,
             homeColors: houseOwner.homeColors,
             furniturePos: houseOwner.furniturePos
           });
         }
       }
+
 
       // Показываем нас новым соседям по комнате
       socket.broadcast.to(newRoom).emit('newPlayer', p);
@@ -182,11 +284,43 @@ io.on('connection', (socket) => {
     }
   });
 
+
+  // --- CAFE REST & 1v1 ---
+  socket.on('startResting', () => {
+    if (onlinePlayers[socket.id]) {
+      onlinePlayers[socket.id].isResting = true;
+      let room = onlinePlayers[socket.id].room;
+      if (room === 'cafe') {
+         // Check if another player is resting here
+         let restingPlayers = Object.values(onlinePlayers).filter(p => p.room === 'cafe' && p.isResting && p.id !== socket.id);
+         if (restingPlayers.length > 0) {
+            let target = restingPlayers[0];
+            io.to(target.id).emit('pvpRequest', onlinePlayers[socket.id].name);
+         }
+      }
+    }
+  });
+
+  socket.on('stopResting', () => {
+    if (onlinePlayers[socket.id]) {
+      onlinePlayers[socket.id].isResting = false;
+    }
+  });
+
+  socket.on('acceptPvp', (requesterName) => {
+    let p = onlinePlayers[socket.id];
+    let req = Object.values(onlinePlayers).find(pl => pl.name === requesterName);
+    if (p && req) {
+       io.to(p.id).emit('pvpStart');
+       io.to(req.id).emit('pvpStart');
+    }
+  });
+
   // --- СИСТЕМА ДРУЗЕЙ ---
   socket.on('sendFriendRequest', (targetUsername) => {
-    const target = Object.values(onlinePlayers).find(p => p.username === targetUsername);
+    const target = Object.values(onlinePlayers).find(p => p.name === targetUsername);
     if (target) {
-      io.to(target.id).emit('friendRequest', onlinePlayers[socket.id].username); // Отправляем запрос
+      io.to(target.id).emit('friendRequest', onlinePlayers[socket.id].name); // Отправляем запрос
     }
   });
 
@@ -195,14 +329,14 @@ io.on('connection', (socket) => {
     if(!p) return;
     
     // Добавляем в БД обоим игрокам (убедитесь, что переменная db у вас объявлена)
-    await db.collection('users').updateOne({username: p.username}, {$addToSet: {friends: requesterUsername}});
-    await db.collection('users').updateOne({username: requesterUsername}, {$addToSet: {friends: p.username}});
+    await db.collection('users').updateOne({username: p.name}, {$addToSet: {friends: requesterUsername}});
+    await db.collection('users').updateOne({username: requesterUsername}, {$addToSet: {friends: p.name}});
 
     // Уведомляем обоих
     socket.emit('friendAdded', requesterUsername);
-    const reqPlayer = Object.values(onlinePlayers).find(pl => pl.username === requesterUsername);
+    const reqPlayer = Object.values(onlinePlayers).find(pl => pl.name === requesterUsername);
     if (reqPlayer) {
-      io.to(reqPlayer.id).emit('friendAdded', p.username);
+      io.to(reqPlayer.id).emit('friendAdded', p.name);
     }
   });
 
@@ -287,7 +421,9 @@ io.on('connection', (socket) => {
 
     graffitis.push({
        owner: p.name,
-       text: data.text,
+       dataUrl: data.dataUrl,
+       w: data.w,
+       h: data.h,
        x: data.x,
        y: data.y,
        color: p.color,
