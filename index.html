@@ -333,11 +333,12 @@
 
   let currentLocation = 'square';
 
-  let timeCycle = 'day';
+  let gameHour = 12.0;
   let crystals = {};
   let dominator = null;
   let domPlayersCoords = [];
   let graffitis = [];
+  let graffitiImages = {};
   let collectibles = []; // received from server if someone dominates?
  // По умолчанию теперь спавн на площади
   let currentHouse = null; // Для хранения чужого дома, если мы в гостях
@@ -398,15 +399,13 @@
   
 
   socket.on('worldState', (state) => {
-    timeCycle = state.timeCycle;
+    gameHour = state.gameHour;
     crystals = state.crystals;
     dominator = state.dominator;
   });
 
   socket.on('timeUpdate', (data) => {
-    timeCycle = data.cycle;
-    player.speechBubble.text = timeCycle === 'night' ? 'Наступила ночь...' : 'Время суток изменилось!';
-    player.speechBubble.timer = 150;
+    gameHour = data.gameHour;
   });
 
   socket.on('crystalUpdate', (data) => {
@@ -441,6 +440,13 @@
 
   socket.on('graffitiUpdate', (data) => {
     graffitis = data;
+    graffitis.forEach(g => {
+       if (!graffitiImages[g.owner]) {
+          let img = new Image();
+          img.src = g.dataUrl;
+          graffitiImages[g.owner] = img;
+       }
+    });
   });
   socket.on('graffitiError', (msg) => {
     player.speechBubble.text = msg;
@@ -547,12 +553,11 @@
 
   function submitGraffiti() {
     let dataUrl = grCanvas.toDataURL();
-    // randomly place on the front face of the cube (x:490..510, y:320..360)
-    let rx = 480 + Math.random() * 30;
-    let ry = 310 + Math.random() * 40;
-    socket.emit('placeGraffiti', { dataUrl: dataUrl, x: rx, y: ry, w: 100, h: 60 });
+    // randomly place on the side face of the cube
+    let rx = 550 + Math.random() * 10;
+    let ry = 300 + Math.random() * 20;
+    socket.emit('placeGraffiti', { dataUrl: dataUrl, x: rx, y: ry, w: 40, h: 40 });
     closeModal('graffitiModal');
-    // clear canvas for next time
     grCtx.clearRect(0, 0, grCanvas.width, grCanvas.height);
   }
 
@@ -1393,9 +1398,20 @@
       // Draw graffitis on the center cube
       for(let g of graffitis) {
          if (g.room === 'square') {
-            let img = new Image();
-            img.src = g.dataUrl;
-            ctx.drawImage(img, g.x, g.y, g.w, g.h);
+            let img = graffitiImages[g.owner];
+            if (img && img.complete) {
+               ctx.save();
+               // Apply axonometric skew (skewY) to match the box side
+               // The box side is drawn with: `ctx.beginPath(); ctx.moveTo(x+w, y); ctx.lineTo(x+w+d, y-d); ...`
+               // That means it goes up-right.
+               // Front face: x=490, y=320, w=60, h=80
+               // Side face: x=550 to 580, y=320 to 290
+               ctx.translate(g.x, g.y);
+               // Simple perspective skew
+               ctx.transform(1, -0.5, 0, 1, 0, 0);
+               ctx.drawImage(img, 0, 0, g.w, g.h);
+               ctx.restore();
+            }
          }
       }
 }
@@ -2000,26 +2016,67 @@
   }
 
 
-    // Day/Night filter
-    if (timeCycle !== 'day') {
-      ctx.fillStyle = timeCycle === 'night' ? 'rgba(0, 0, 50, 0.6)' :
-                      (timeCycle === 'sunset' ? 'rgba(200, 100, 0, 0.3)' : 'rgba(255, 200, 150, 0.2)');
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Smooth Day/Night Filter
+    // 0:00 (Night), 6:00 (Sunrise), 12:00 (Day), 18:00 (Sunset), 24:00 (Night)
+    let overlayColor = 'rgba(0,0,0,0)';
+    let isNight = false;
+    let r=0, g=0, b=0, a=0;
 
-      // If night, draw simple lights near players and crystals
-      if (timeCycle === 'night') {
-        let drawLight = (lx, ly, lr) => {
-          let grd = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
-          grd.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
-          grd.addColorStop(1, 'rgba(255, 255, 200, 0)');
-          ctx.fillStyle = grd;
-          ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI*2); ctx.fill();
-        };
-        drawLight(player.x, player.y, 100);
-        for(let id in players) {
-          drawLight(players[id].x, players[id].y, 100);
+    if (gameHour >= 21 || gameHour <= 5) {
+       // Deep Night
+       r=0; g=0; b=50; a=0.6;
+       isNight = true;
+    } else if (gameHour > 5 && gameHour < 8) {
+       // Sunrise 5-8
+       let progress = (gameHour - 5) / 3.0; // 0 to 1
+       // transition from deep night to day (a=0)
+       // color goes from dark blue to bright orange
+       r = Math.floor(255 * progress);
+       g = Math.floor(200 * progress);
+       b = Math.floor(50 + 100 * progress);
+       a = 0.6 * (1 - progress);
+       if (progress < 0.5) isNight = true;
+    } else if (gameHour >= 8 && gameHour <= 17) {
+       // Day
+       a = 0;
+    } else if (gameHour > 17 && gameHour < 21) {
+       // Sunset 17-21
+       let progress = (gameHour - 17) / 4.0; // 0 to 1
+       // from a=0 to a=0.6
+       r = Math.floor(200 - 200 * progress);
+       g = Math.floor(100 - 100 * progress);
+       b = Math.floor(50 * progress);
+       a = 0.6 * progress;
+       if (progress > 0.5) isNight = true;
+    }
+
+    if (a > 0) {
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (isNight) {
+      let drawLight = (lx, ly, lr) => {
+        let grd = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
+        grd.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
+        grd.addColorStop(1, 'rgba(255, 255, 200, 0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawLight(player.x - camera.x, player.y - camera.y, 100);
+      for (let pid in otherPlayers) {
+        if (otherPlayers[pid].room === currentLocation) {
+          drawLight(otherPlayers[pid].x - camera.x, otherPlayers[pid].y - camera.y, 100);
         }
       }
+      for (let k in crystals) {
+        if (crystals[k].room === currentLocation) {
+          drawLight(crystals[k].x - camera.x, crystals[k].y - camera.y, 80);
+        }
+      }
+    }
     }
 
     // Domination minimap info

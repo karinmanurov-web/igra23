@@ -28,8 +28,7 @@ app.use(express.static(path.join(__dirname, './')));
 
 // --- WORLD STATE ---
 let worldState = {
-  timeCycle: 'day', // 'day', 'sunset', 'night', 'sunrise'
-  timeTicks: 0,
+  gameHour: 12.0,
   crystals: {
     crystal_1: { owner: null, beingCapturedBy: null, captureProgress: 0, x: 200, y: 500, radius: 40, room: 'square' },
     crystal_2: { owner: null, beingCapturedBy: null, captureProgress: 0, x: 800, y: 150, radius: 40, room: 'park' },
@@ -46,17 +45,21 @@ let worldState = {
 // Sunrise: (Let's make Sunset/Sunrise 5m each to equal 60m total, or 10m sunset + 15m night = 60m. 35+10+15 = 60. Wait, sunrise? Let's do Day 30m, Sunset 10m, Night 10m, Sunrise 10m = 60m. Prompt: "35m Day, 10m Sunset/Sunrise, 15m Night" -> maybe Sunset 5m, Sunrise 5m? Let's say Sunset=5m, Sunrise=5m)
 
 setInterval(() => {
-  worldState.timeTicks = (worldState.timeTicks + 1) % 3600;
 
-  const oldCycle = worldState.timeCycle;
-  if (worldState.timeTicks < 2100) worldState.timeCycle = 'day';
-  else if (worldState.timeTicks < 2400) worldState.timeCycle = 'sunset';
-  else if (worldState.timeTicks < 3300) worldState.timeCycle = 'night';
-  else worldState.timeCycle = 'sunrise';
+  // We'll calculate a continuous time of day from 0.0 to 24.0 based on real world time.
+  // 1 real hour = 1 game day. So game time runs 24x faster.
+  const d = new Date();
+  const minutes = d.getMinutes();
+  const seconds = d.getSeconds();
 
-  if (oldCycle !== worldState.timeCycle) {
-    io.emit('timeUpdate', { cycle: worldState.timeCycle });
-  }
+  // time goes from 0.0 to 24.0 over the course of 60 real minutes.
+  // minutes go from 0 to 59. 60 real mins = 24 game hours.
+  // so (minutes + seconds/60) * (24/60)
+  const gameHour = (minutes + seconds/60) * (24/60);
+  worldState.gameHour = gameHour;
+
+  io.emit('timeUpdate', { gameHour: worldState.gameHour });
+
 
   // Crystal capture logic
   let needsCrystalUpdate = false;
@@ -185,7 +188,7 @@ io.on('connection', (socket) => {
 
     socket.emit('loginSuccess', { playerData: user });
     socket.emit('currentPlayers', onlinePlayers);
-    socket.emit('worldState', { timeCycle: worldState.timeCycle, crystals: worldState.crystals, dominator: worldState.dominator });
+    socket.emit('worldState', { gameHour: worldState.gameHour, crystals: worldState.crystals, dominator: worldState.dominator });
     socket.emit('graffitiUpdate', graffitis);
     socket.emit('collectiblesUpdate', collectibles);
     socket.broadcast.emit('newPlayer', onlinePlayers[socket.id]);
