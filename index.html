@@ -590,7 +590,7 @@
   }
 
   // --- АВТОРИЗАЦИЯ И СИНХРОНИЗАЦИЯ С БД ---
-  function attemptAuth(action) {
+  window.attemptAuth = function(action) {
     const username = document.getElementById('authLogin').value.trim();
     const password = document.getElementById('authPass').value.trim();
     const errBox = document.getElementById('authError');
